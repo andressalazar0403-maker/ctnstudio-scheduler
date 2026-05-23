@@ -14,7 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      appointments: {
+        Row: {
+          created_at: string
+          end_at: string
+          id: string
+          service_id: string
+          start_at: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_at: string
+          id?: string
+          service_id: string
+          start_at: string
+          status?: Database["public"]["Enums"]["appointment_status"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          end_at?: string
+          id?: string
+          service_id?: string
+          start_at?: string
+          status?: Database["public"]["Enums"]["appointment_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_hours: {
+        Row: {
+          close_time: string
+          closed: boolean
+          day_of_week: number
+          open_time: string
+        }
+        Insert: {
+          close_time: string
+          closed?: boolean
+          day_of_week: number
+          open_time: string
+        }
+        Update: {
+          close_time?: string
+          closed?: boolean
+          day_of_week?: number
+          open_time?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          blocked: boolean
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          no_show_count: number
+        }
+        Insert: {
+          avatar_url?: string | null
+          blocked?: boolean
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          no_show_count?: number
+        }
+        Update: {
+          avatar_url?: string | null
+          blocked?: boolean
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          no_show_count?: number
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          duration_minutes: number
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          duration_minutes: number
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          duration_minutes?: number
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +142,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      appointment_status: "scheduled" | "completed" | "cancelled" | "no_show"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +269,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      appointment_status: ["scheduled", "completed", "cancelled", "no_show"],
+    },
   },
 } as const
