@@ -14,33 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_emails: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+        }
+        Relationships: []
+      }
       appointments: {
         Row: {
+          client_name: string | null
+          client_phone: string | null
           created_at: string
           end_at: string
           id: string
           service_id: string
           start_at: string
           status: Database["public"]["Enums"]["appointment_status"]
-          user_id: string
+          user_id: string | null
         }
         Insert: {
+          client_name?: string | null
+          client_phone?: string | null
           created_at?: string
           end_at: string
           id?: string
           service_id: string
           start_at: string
           status?: Database["public"]["Enums"]["appointment_status"]
-          user_id: string
+          user_id?: string | null
         }
         Update: {
+          client_name?: string | null
+          client_phone?: string | null
           created_at?: string
           end_at?: string
           id?: string
           service_id?: string
           start_at?: string
           status?: Database["public"]["Enums"]["appointment_status"]
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -115,6 +136,7 @@ export type Database = {
           duration_minutes: number
           id: string
           name: string
+          price_cents: number
           slug: string
           sort_order: number
         }
@@ -122,6 +144,7 @@ export type Database = {
           duration_minutes: number
           id?: string
           name: string
+          price_cents?: number
           slug: string
           sort_order?: number
         }
@@ -129,6 +152,7 @@ export type Database = {
           duration_minutes?: number
           id?: string
           name?: string
+          price_cents?: number
           slug?: string
           sort_order?: number
         }
@@ -139,7 +163,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       appointment_status: "scheduled" | "completed" | "cancelled" | "no_show"
