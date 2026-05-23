@@ -7,20 +7,20 @@ const SLOT_MIN = 15;
 const NO_SHOW_GRACE_MIN = 15;
 const CANCEL_WINDOW_HOURS = 2;
 
-type Service = { id: string; slug: string; name: string; duration_minutes: number };
-
-function pad(n: number) {
-  return n.toString().padStart(2, "0");
-}
-function ymd(d: Date) {
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
+type Service = {
+  id: string;
+  slug: string;
+  name: string;
+  duration_minutes: number;
+  price_cents: number;
+  sort_order: number;
+};
 
 /** Lista pública de servicios. */
 export const listServices = createServerFn({ method: "GET" }).handler(async () => {
   const { data, error } = await supabaseAdmin
     .from("services")
-    .select("id, slug, name, duration_minutes")
+    .select("id, slug, name, duration_minutes, price_cents, sort_order")
     .order("sort_order");
   if (error) throw new Error(error.message);
   return (data ?? []) as Service[];
@@ -72,7 +72,7 @@ export const getAvailability = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      serviceSlug: z.enum(["corte", "barba", "combo"]),
+      serviceSlug: z.string().min(1).max(64),
     }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -124,7 +124,7 @@ export const createAppointment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
     z.object({
-      serviceSlug: z.enum(["corte", "barba", "combo"]),
+      serviceSlug: z.string().min(1).max(64),
       startAt: z.string().datetime(),
     }).parse(input),
   )

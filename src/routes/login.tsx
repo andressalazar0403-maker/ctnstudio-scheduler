@@ -17,14 +17,14 @@ function LoginPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) nav({ to: "/reservar" });
+      if (data.session) nav({ to: "/" });
     });
   }, [nav]);
 
   async function signIn() {
     setLoading(true);
     const res = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin + "/reservar",
+      redirect_uri: window.location.origin + "/",
     });
     if (res.error) {
       toast.error("No pudimos entrar con Google");
@@ -32,7 +32,7 @@ function LoginPage() {
       return;
     }
     if (res.redirected) return;
-    nav({ to: "/reservar" });
+    nav({ to: "/" });
   }
 
   return (

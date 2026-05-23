@@ -1,150 +1,85 @@
+# Plan CTNSTUDIO
 
-# CTNSTUDIO — App de reservas para barbería
+## 1. Página principal con scroll (1 sola URL `/`)
 
-## Visión general
+```text
+[ Barra fija arriba: CTNSTUDIO · Reservar · Mis citas · Ajustes · (Admin si jefe) · Salir ]
 
-Web app de reservas en tema oscuro (negro + acentos morado brillante + botones naranja espacial). Solo 3 pantallas accesibles al cliente: **Reservar**, **Mis Citas**, **Ajustes**. Sin pagos. Login con Google. Bloqueo automático tras 3 faltas (no-shows).
-
----
-
-## Estética
-
-- Fondo negro (`oklch(~0.12 ...)`), superficies un pelín más claras
-- Acento principal: morado brillante / neón (`oklch(~0.65 0.27 300)`)
-- CTA: naranja espacial (`oklch(~0.72 0.20 50)`)
-- Estado "bloqueado": rojo enfadado en toda la UI cuando el usuario llega a 3 faltas
-- Tipografía display moderna + sans neutra
-- Hero con espacio reservado para la animación de la navaja (40 frames secuenciales en scroll) — dejo un contenedor preparado, el usuario añadirá los frames después
-
----
-
-## Páginas (rutas TanStack Start)
-
-```
-src/routes/
-  __root.tsx              # Layout con header + listener de auth + invalidación de queries
-  index.tsx               # Landing pública con hero (navaja placeholder) + CTA "Reservar"
-  login.tsx               # Botón "Entrar con Google"
-  _authenticated.tsx      # Layout que protege rutas privadas
-  _authenticated/
-    reservar.tsx          # Pantalla 1: elegir servicios + día + hora
-    mis-citas.tsx         # Pantalla 2: próximas y pasadas
-    ajustes.tsx           # Pantalla 3: foto de Google + cerrar sesión
+#inicio       → Espacio reservado para animación de la navaja (40 frames, lo metes tú)
+#reservar     → Título XL "CTNSTUDIO" + lista vertical de servicios + calendario + horas
+#mis-citas    → Tus citas próximas y pasadas
 ```
 
-Si el usuario está bloqueado (3 faltas), `reservar.tsx` muestra el estado rojo con mensaje de WhatsApp/teléfono en vez del formulario.
+- Una sola ruta `/` con tres secciones `<section id="...">`.
+- Click en la barra = scroll suave a la sección.
+- `/login` y `/admin` siguen siendo páginas aparte.
+- Si no hay sesión: la barra solo muestra "Iniciar sesión" y al hacer click en Reservar/Mis citas redirige a `/login`.
 
----
+## 2. Servicios (con precio)
 
-## Lógica de servicios y tiempo
+Lista vertical, uno debajo del otro:
 
-Tres servicios fijos:
-- Corte → 35 min
-- Barba → 20 min
-- Corte + Barba → 55 min
+- Corte — 35 min — €
+- Corte + Barba — 55 min — €
+- Corte + Barba + Cejas — 65 min — €
+- Corte + Cejas — 45 min — €
+- Cejas — 10 min — €
 
-UI:
-- Selector tipo chips/tarjetas (no se pueden combinar Corte y Barba sueltos: o eliges uno suelto o el combo)
-- Contador grande visible que muestra la duración total elegida
-- Calendario para elegir día
-- Lista de horas disponibles para ese día, calculada en el servidor
+El jefe edita nombre, duración y precio desde su panel.
 
-### Cálculo de disponibilidad
+## 3. Mis citas
+Lista de citas del cliente: próximas (con botón "Cancelar" si faltan ≥ X horas) y pasadas. Si está bloqueado → modo rojo + WhatsApp/llamar.
 
-- Horario laboral fijo configurado en una tabla (ej. L-S 10:00–20:00, domingo cerrado) — el plan inicial mete un horario sensato; el peluquero lo puede ajustar más adelante con un mini admin.
-- Slots base cada **15 minutos**.
-- Un slot está disponible si **todos** los slots de 15 min que cubren la duración del servicio elegido están libres (no se solapan con citas existentes ni caen fuera del horario).
-- El servidor devuelve solo las horas válidas → "nadie tiene que esperar".
+## 4. Cancelación
+- Cliente puede cancelar su propia cita hasta **X horas antes** (configurable, propongo **2 horas** por defecto, lo puedes cambiar luego en el panel).
+- Si no avisa y no aparece, el jefe marca "no-show" en su panel → suma falta. A las 3 faltas el cliente queda bloqueado.
 
----
+## 5. Panel admin (`/admin`)
 
-## Auth + Faltas
+**Acceso**: solo `eliot0583@gmail.com`. Al iniciar sesión con Google, si su email coincide ve el botón "Admin" en la barra y puede entrar a `/admin`. Cualquier otro usuario que intente `/admin` → 404.
 
-### Google login
-- Lovable Cloud (Supabase) activado
-- Provider Google habilitado vía broker de Lovable (`lovable.auth.signInWithOAuth("google", ...)`)
-- Trigger DB que crea fila en `profiles` al registrarse (avatar, nombre, email desde metadata de Google)
+Secciones del panel:
 
-### Conteo de faltas (no-shows)
-- **Automático**: una server function (llamada al cargar `mis-citas` o `reservar`) marca como `no_show` toda cita `scheduled` cuya hora de fin ya pasó hace más de X minutos sin haberse marcado como `completed`.
-- Cada `no_show` suma 1 a `profiles.no_show_count`.
-- Cuando `no_show_count >= 3` → `profiles.blocked = true`.
-- El usuario puede cancelar una cita con antelación sin penalización (>2h antes).
+- **Agenda**: vista día / semana / mes con todas las citas (cliente, servicio, hora).
+- **Crear cita manual**: formulario con nombre + teléfono del cliente walk-in + servicio + fecha/hora. Se guarda sin necesidad de que el cliente tenga cuenta.
+- **Cancelar cita**: desde la agenda, botón cancelar en cualquier cita.
+- **Servicios**: editar nombre, duración (min) y precio. Añadir / borrar servicios.
+- **Clientes**: lista con faltas acumuladas. Botones: marcar no-show, desbloquear, resetear contador.
+- **Horario**: 24h por defecto, el jefe define qué días y rango de horas trabaja (ej: Lun 10-20, Mar 10-20, etc.). Hasta que lo configure, no hay huecos disponibles → mensaje "el jefe aún no ha configurado horario".
 
-### Estado bloqueado
-- La pantalla **Reservar** se tiñe de rojo, muestra: *"Has acumulado 3 faltas. Ya no puedes reservar online — llama o escribe por WhatsApp"* con botones a `tel:` y `wa.me`.
-- El header también marca el estado en rojo.
+## 6. Detalles técnicos
 
----
+**Base de datos (cambios):**
 
-## Backend (Lovable Cloud)
+- `services`: añadir columna `price_cents int` y permitir que el admin haga INSERT/UPDATE/DELETE (RLS).
+- `appointments`: añadir `client_name text` y `client_phone text` nullable (para walk-ins sin cuenta). Si `user_id` está, se ignoran. Añadir status `no_show` y `cancelled`.
+- `business_hours`: permitir UPDATE al admin. Por defecto todos los días `closed = true` hasta que el jefe configure.
+- Nueva tabla `admin_emails (email text primary key)` con `eliot0583@gmail.com`. Función `is_admin()` security definer que mira si `auth.jwt() ->> 'email'` está ahí. Todas las políticas admin usan `is_admin()`.
 
-### Tablas
+**Lógica:**
+- `cancelAppointment(id)` server fn: solo el dueño y solo si faltan ≥ 2 h.
+- `adminCreateAppointment`, `adminCancelAppointment`, `adminMarkNoShow`, `adminUnblockUser`, `adminUpsertService`, `adminSetBusinessHours`: todas protegidas con `requireSupabaseAuth` + check `is_admin()`.
+- `getAvailability` ya respeta `business_hours` (si está cerrado, devuelve [] slots).
 
-**`profiles`** (1:1 con `auth.users`)
-- `id` (uuid, FK auth.users, PK)
-- `full_name`, `email`, `avatar_url`
-- `no_show_count` (int, default 0)
-- `blocked` (bool, default false)
-- `created_at`
+**Frontend:**
+- Refactor de la página `/`: convertirla en scroll-page con 3 secciones, mover lógica de `/reservar` y nueva sección `mis-citas` ahí.
+- Borrar `_authenticated/reservar.tsx` (ya no es ruta).
+- Nueva ruta `/admin` (también protegida + check email).
+- Hook `useIsAdmin()` que compara `user.email` con lista cliente (la verdad sigue siendo server-side).
 
-**`services`** (seed con 3 filas)
-- `id`, `slug` (`corte`/`barba`/`combo`), `name`, `duration_minutes`
+## 7. Lo que NO entra en esta entrega
 
-**`business_hours`** (seed)
-- `day_of_week` (0-6), `open_time`, `close_time`, `closed` (bool)
+- Animación de los 40 frames (queda el `<div>` placeholder con la altura correcta, tú la enchufas después).
+- Pagos / depósitos.
+- Notificaciones push o emails de recordatorio.
 
-**`appointments`**
-- `id` (uuid PK), `user_id` (FK profiles)
-- `service_id` (FK services)
-- `start_at` (timestamptz), `end_at` (timestamptz)
-- `status` (enum: `scheduled` | `completed` | `cancelled` | `no_show`)
-- `created_at`
+## Resumen para confirmar
 
-### RLS
-- `profiles`: el usuario lee/actualiza solo su fila. `blocked` y `no_show_count` solo escribibles desde server con admin client.
-- `appointments`: el usuario ve y cancela solo las suyas. Inserción vía server function (que valida disponibilidad + bloqueo + actualiza no-shows antes).
-- `services` y `business_hours`: lectura pública.
+1. Scroll de una página con barra arriba ✅
+2. Precios editables por el jefe ✅
+3. Cancelación cliente ≥ 2 h antes (luego configurable) ✅
+4. Admin = `eliot0583@gmail.com`, ve botón Admin al loguearse ✅
+5. Jefe configura horario desde su panel (por defecto cerrado) ✅
+6. Citas a mano con nombre + teléfono del walk-in ✅
 
-### Server functions (`src/lib/*.functions.ts`)
-
-- `getAvailability({ date, serviceSlug })` → devuelve array de slots libres calculados en servidor
-- `createAppointment({ serviceSlug, startAt })` → valida (no bloqueado, slot libre), inserta
-- `cancelAppointment({ id })` → marca como `cancelled` si es con antelación
-- `getMyAppointments()` → próximas + pasadas
-- `runNoShowSweep()` → marca no-shows vencidos y actualiza counters/blocked (se llama al cargar las pantallas autenticadas)
-
----
-
-## Detalles técnicos
-
-- TanStack Start + TanStack Query (`ensureQueryData` en loaders, `useSuspenseQuery` en componentes)
-- `_authenticated` layout: `beforeLoad` con `supabase.auth.getUser()` → redirige a `/login` si no hay sesión
-- Listener `onAuthStateChange` en `__root.tsx` con `router.invalidate()` + `queryClient.invalidateQueries()`
-- `attachSupabaseAuth` en `src/start.ts` para que las server fn lleven el bearer token
-- Animación de la navaja: contenedor `<section>` con altura grande, sticky inner, espacio reservado y comentario `TODO: añadir 40 frames secuenciales en scroll` — el usuario la rellena después
-- `head()` por ruta con título/descripción específicos (SEO básico)
-
----
-
-## Pasos de implementación
-
-1. Activar Lovable Cloud + configurar Google OAuth
-2. Crear migración: tablas + enum + RLS + seed (servicios, horario)
-3. Hook `useAuth` + listener en `__root.tsx` + `attachSupabaseAuth`
-4. `/login` con botón Google
-5. Layout `_authenticated` con guard
-6. Server functions de disponibilidad / citas / no-show sweep
-7. Pantalla **Reservar**: selector servicios + contador + calendario + slots + bloqueo rojo
-8. Pantalla **Mis Citas**: lista próximas + pasadas + cancelar
-9. Pantalla **Ajustes**: avatar + nombre + cerrar sesión
-10. Landing pública con hero + placeholder de la animación de navaja
-11. Estilos: tokens negro/morado/naranja + variante "blocked" en rojo
-
----
-
-## Fuera de alcance (confirmado por el usuario)
-
-- Sin pagos / tarjetas / monedas
-- Sin panel admin para el peluquero en esta primera versión (horario es seed editable luego)
-- La animación de la navaja se monta después con los frames de Cris
+Si todo esto te encaja, dame luz verde y lo construyo de un tirón.
