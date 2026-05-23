@@ -139,7 +139,7 @@ export const adminSetClient = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin((context.claims as Record<string, unknown>).email as string);
-    const update: Record<string, unknown> = {};
+    const update: { blocked?: boolean; no_show_count?: number } = {};
     if (typeof data.blocked === "boolean") update.blocked = data.blocked;
     if (typeof data.no_show_count === "number") update.no_show_count = data.no_show_count;
     if (!Object.keys(update).length) return { ok: true };
