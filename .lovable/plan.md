@@ -1,85 +1,47 @@
-# Plan CTNSTUDIO
+## Hero scroll-driven con 192 frames
 
-## 1. Página principal con scroll (1 sola URL `/`)
+Reemplaza el `<video>` actual por una secuencia de 192 `.webp` servidos desde el bucket público `navaja-video-imagenes`, controlada por scroll con `framer-motion` + `useSpring`. La secuencia vive como fondo fijo a pantalla completa y todo el resto del contenido flota por encima.
 
-```text
-[ Barra fija arriba: CTNSTUDIO · Reservar · Mis citas · Ajustes · (Admin si jefe) · Salir ]
+### Cambios
 
-#inicio       → Espacio reservado para animación de la navaja (40 frames, lo metes tú)
-#reservar     → Título XL "CTNSTUDIO" + lista vertical de servicios + calendario + horas
-#mis-citas    → Tus citas próximas y pasadas
+**`src/routes/index.tsx`**
+
+1. Borrar `HeroSection` (la del `<video src="/navaja.mp4">`) y crear `HeroSequence`.
+2. Reestructurar `HomePage`:
+   - Contenedor raíz: `relative min-h-[350vh]`.
+   - `<HeroSequence />` (fixed inset-0 -z-10).
+   - Wrapper `relative z-10` que contiene `TopNav` + un div con `id="inicio"` y `pt-[110vh]` que envuelve `ReservarSection` y `MisCitasSection`.
+3. Quitar el import de `motion` (ya no se usa `motion.div`).
+
+**`HeroSequence` — lógica**
+
+```tsx
+const FRAME_COUNT = 192;
+const BASE = "https://lgnrmnuwjmewqxmqtwqa.supabase.co/storage/v1/object/public/navaja-video-imagenes";
+const urls = Array.from({ length: FRAME_COUNT }, (_, i) =>
+  `${BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`
+);
 ```
 
-- Una sola ruta `/` con tres secciones `<section id="...">`.
-- Click en la barra = scroll suave a la sección.
-- `/login` y `/admin` siguen siendo páginas aparte.
-- Si no hay sesión: la barra solo muestra "Iniciar sesión" y al hacer click en Reservar/Mis citas redirige a `/login`.
+- Precargar las 192 imágenes en un `useRef<HTMLImageElement[]>` dentro de `useEffect` (crea `new Image()`, asigna `src`, las guarda en el array).
+- `<canvas>` con `className="fixed inset-0 w-full h-screen object-cover -z-10"` y un `ref`. En el primer load dimensionar el canvas a `window.innerWidth × window.innerHeight` (con `devicePixelRatio`) y redibujar en `resize`.
+- `useScroll()` global (sin `target`) → `scrollYProgress`.
+- `const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });`
+- `const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });`
+- `const opacity = useTransform(smooth, [0.8, 1], [1, 0.27]);`
+- `useMotionValueEvent(frame, "change", v => drawFrame(Math.round(v)))` — dibuja la imagen precargada con `ctx.drawImage(img, 0, 0, w, h)` usando `object-cover` (calcular escala para cubrir manteniendo ratio).
+- `useMotionValueEvent(opacity, "change", v => { canvas.style.opacity = String(v); })`.
+- Dibujar frame 0 en cuanto la primera imagen carga.
 
-## 2. Servicios (con precio)
+**Por qué canvas y no `<img>` swap**: cambiar `img.src` 192 veces provoca flicker y reflow; con canvas + preload el cambio de frame es un `drawImage` instantáneo y suave bajo el spring.
 
-Lista vertical, uno debajo del otro:
+### Lo que NO cambia
 
-- Corte — 35 min — €
-- Corte + Barba — 55 min — €
-- Corte + Barba + Cejas — 65 min — €
-- Corte + Cejas — 45 min — €
-- Cejas — 10 min — €
+- `ReservarSection`, `MisCitasSection`, `TopNav`, rutas `/admin` y `/login`, lógica de booking, RLS, base de datos. Solo se toca `src/routes/index.tsx`.
+- `public/navaja.mp4` se queda (no estorba, lo borramos si quieres).
 
-El jefe edita nombre, duración y precio desde su panel.
+### Resultado
 
-## 3. Mis citas
-Lista de citas del cliente: próximas (con botón "Cancelar" si faltan ≥ X horas) y pasadas. Si está bloqueado → modo rojo + WhatsApp/llamar.
-
-## 4. Cancelación
-- Cliente puede cancelar su propia cita hasta **X horas antes** (configurable, propongo **2 horas** por defecto, lo puedes cambiar luego en el panel).
-- Si no avisa y no aparece, el jefe marca "no-show" en su panel → suma falta. A las 3 faltas el cliente queda bloqueado.
-
-## 5. Panel admin (`/admin`)
-
-**Acceso**: solo `eliot0583@gmail.com`. Al iniciar sesión con Google, si su email coincide ve el botón "Admin" en la barra y puede entrar a `/admin`. Cualquier otro usuario que intente `/admin` → 404.
-
-Secciones del panel:
-
-- **Agenda**: vista día / semana / mes con todas las citas (cliente, servicio, hora).
-- **Crear cita manual**: formulario con nombre + teléfono del cliente walk-in + servicio + fecha/hora. Se guarda sin necesidad de que el cliente tenga cuenta.
-- **Cancelar cita**: desde la agenda, botón cancelar en cualquier cita.
-- **Servicios**: editar nombre, duración (min) y precio. Añadir / borrar servicios.
-- **Clientes**: lista con faltas acumuladas. Botones: marcar no-show, desbloquear, resetear contador.
-- **Horario**: 24h por defecto, el jefe define qué días y rango de horas trabaja (ej: Lun 10-20, Mar 10-20, etc.). Hasta que lo configure, no hay huecos disponibles → mensaje "el jefe aún no ha configurado horario".
-
-## 6. Detalles técnicos
-
-**Base de datos (cambios):**
-
-- `services`: añadir columna `price_cents int` y permitir que el admin haga INSERT/UPDATE/DELETE (RLS).
-- `appointments`: añadir `client_name text` y `client_phone text` nullable (para walk-ins sin cuenta). Si `user_id` está, se ignoran. Añadir status `no_show` y `cancelled`.
-- `business_hours`: permitir UPDATE al admin. Por defecto todos los días `closed = true` hasta que el jefe configure.
-- Nueva tabla `admin_emails (email text primary key)` con `eliot0583@gmail.com`. Función `is_admin()` security definer que mira si `auth.jwt() ->> 'email'` está ahí. Todas las políticas admin usan `is_admin()`.
-
-**Lógica:**
-- `cancelAppointment(id)` server fn: solo el dueño y solo si faltan ≥ 2 h.
-- `adminCreateAppointment`, `adminCancelAppointment`, `adminMarkNoShow`, `adminUnblockUser`, `adminUpsertService`, `adminSetBusinessHours`: todas protegidas con `requireSupabaseAuth` + check `is_admin()`.
-- `getAvailability` ya respeta `business_hours` (si está cerrado, devuelve [] slots).
-
-**Frontend:**
-- Refactor de la página `/`: convertirla en scroll-page con 3 secciones, mover lógica de `/reservar` y nueva sección `mis-citas` ahí.
-- Borrar `_authenticated/reservar.tsx` (ya no es ruta).
-- Nueva ruta `/admin` (también protegida + check email).
-- Hook `useIsAdmin()` que compara `user.email` con lista cliente (la verdad sigue siendo server-side).
-
-## 7. Lo que NO entra en esta entrega
-
-- Animación de los 40 frames (queda el `<div>` placeholder con la altura correcta, tú la enchufas después).
-- Pagos / depósitos.
-- Notificaciones push o emails de recordatorio.
-
-## Resumen para confirmar
-
-1. Scroll de una página con barra arriba ✅
-2. Precios editables por el jefe ✅
-3. Cancelación cliente ≥ 2 h antes (luego configurable) ✅
-4. Admin = `eliot0583@gmail.com`, ve botón Admin al loguearse ✅
-5. Jefe configura horario desde su panel (por defecto cerrado) ✅
-6. Citas a mano con nombre + teléfono del walk-in ✅
-
-Si todo esto te encaja, dame luz verde y lo construyo de un tirón.
+- 0–80% scroll: los 192 frames se barren con suavidad milimétrica gracias al spring.
+- 80–100% scroll: último frame congelado, fade de opacity 1 → 0.27 para que el contenido flotante se lea bien.
+- Fondo edge-to-edge sin bordes, contenedores ni sombras.
