@@ -186,51 +186,16 @@ const FRAME_URLS = Array.from(
 );
 
 function HeroSequence() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const imagesRef = useRef<HTMLImageElement[]>([]);
   const loadedRef = useRef<boolean[]>(new Array(FRAME_COUNT).fill(false));
   const currentFrameRef = useRef(0);
+  const [frameIndex, setFrameIndex] = useState(0);
 
   const { scrollYProgress } = useScroll();
   const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
   const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
   const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
-
-  function drawFrame(index: number) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const img = imagesRef.current[index];
-    if (!img || !loadedRef.current[index]) return;
-
-    const cw = canvas.width;
-    const ch = canvas.height;
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
-    if (!iw || !ih) return;
-
-    // object-cover
-    const scale = Math.max(cw / iw, ch / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const dx = (cw - dw) / 2;
-    const dy = (ch - dh) / 2;
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(img, dx, dy, dw, dh);
-    currentFrameRef.current = index;
-  }
-
-  function resizeCanvas() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(window.innerWidth * dpr);
-    canvas.height = Math.floor(window.innerHeight * dpr);
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
-    drawFrame(currentFrameRef.current);
-  }
 
   // Precargar todos los frames
   useEffect(() => {
@@ -242,7 +207,7 @@ function HeroSequence() {
       img.onload = () => {
         if (cancelled) return;
         loadedRef.current[i] = true;
-        if (i === 0) drawFrame(0);
+        if (i === 0) setFrameIndex(0);
       };
       imagesRef.current[i] = img;
     });
@@ -251,29 +216,29 @@ function HeroSequence() {
     };
   }, []);
 
-  useEffect(() => {
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-    return () => window.removeEventListener("resize", resizeCanvas);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useMotionValueEvent(frame, "change", (v) => {
     const idx = Math.round(v);
     if (idx === currentFrameRef.current) return;
-    drawFrame(idx);
+    currentFrameRef.current = idx;
+    setFrameIndex(idx);
   });
 
   useMotionValueEvent(opacity, "change", (v) => {
-    const canvas = canvasRef.current;
-    if (canvas) canvas.style.opacity = String(v);
+    const img = imgRef.current;
+    if (img) img.style.opacity = String(v);
   });
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 w-full h-screen -z-10 pointer-events-none"
+    <img
+      ref={imgRef}
+      src={FRAME_URLS[frameIndex]}
+      alt=""
       aria-hidden
+      decoding="async"
+      fetchPriority="high"
+      className="fixed inset-0 z-0 h-screen w-full object-cover pointer-events-none select-none"
+      style={{ opacity: opacity.get(), transform: "translateZ(0)" }}
+      draggable={false}
     />
   );
 }
