@@ -204,7 +204,7 @@ function HeroSection() {
       ref={containerRef}
       className="relative w-full min-h-[250vh]"
     >
-      <div className="sticky top-0 h-screen w-screen overflow-hidden -ml-[calc((100vw-100%)/2)]">
+      <div className="sticky top-0 left-0 h-screen w-full overflow-hidden">
         <motion.div
           style={{ opacity, scale }}
           className="absolute inset-0 w-full h-full"
