@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
+import { useScroll, useSpring, useTransform, useMotionValueEvent } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,22 +75,25 @@ function HomePage() {
 
   return (
     <div
-      className={cn("min-h-screen", blocked && "blocked-mode")}
+      className={cn("relative min-h-[350vh]", blocked && "blocked-mode")}
       style={{ background: "var(--gradient-hero), var(--background)" }}
     >
-      <TopNav
-        isAuthed={isAuthed}
-        isAdmin={isAdmin}
-        loading={loading}
-        onLogout={logout}
-        onScroll={scrollTo}
-      />
+      <HeroSequence />
 
-      <HeroSection />
+      <div className="relative z-10">
+        <TopNav
+          isAuthed={isAuthed}
+          isAdmin={isAdmin}
+          loading={loading}
+          onLogout={logout}
+          onScroll={scrollTo}
+        />
 
-      <ReservarSection isAuthed={isAuthed} blocked={blocked} />
-
-      {isAuthed && <MisCitasSection blocked={blocked} />}
+        <div id="inicio" className="pt-[110vh]">
+          <ReservarSection isAuthed={isAuthed} blocked={blocked} />
+          {isAuthed && <MisCitasSection blocked={blocked} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -173,53 +176,105 @@ function NavBtn({
   );
 }
 
-/* ---------- Sección 1: hero / animación ---------- */
-function HeroSection() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+/* ---------- Hero: secuencia de 192 frames scroll-driven ---------- */
+const FRAME_COUNT = 192;
+const FRAME_BASE =
+  "https://lgnrmnuwjmewqxmqtwqa.supabase.co/storage/v1/object/public/navaja-video-imagenes";
+const FRAME_URLS = Array.from(
+  { length: FRAME_COUNT },
+  (_, i) => `${FRAME_BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`,
+);
 
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end end"],
+function HeroSequence() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const loadedRef = useRef<boolean[]>(new Array(FRAME_COUNT).fill(false));
+  const currentFrameRef = useRef(0);
+
+  const { scrollYProgress } = useScroll();
+  const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
+  const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
+  const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
+
+  function drawFrame(index: number) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = imagesRef.current[index];
+    if (!img || !loadedRef.current[index]) return;
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    if (!iw || !ih) return;
+
+    // object-cover
+    const scale = Math.max(cw / iw, ch / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const dx = (cw - dw) / 2;
+    const dy = (ch - dh) / 2;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(img, dx, dy, dw, dh);
+    currentFrameRef.current = index;
+  }
+
+  function resizeCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
+    drawFrame(currentFrameRef.current);
+  }
+
+  // Precargar todos los frames
+  useEffect(() => {
+    let cancelled = false;
+    FRAME_URLS.forEach((url, i) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      img.onload = () => {
+        if (cancelled) return;
+        loadedRef.current[i] = true;
+        if (i === 0) drawFrame(0);
+      };
+      imagesRef.current[i] = img;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return () => window.removeEventListener("resize", resizeCanvas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useMotionValueEvent(frame, "change", (v) => {
+    const idx = Math.round(v);
+    if (idx === currentFrameRef.current) return;
+    drawFrame(idx);
   });
 
-  // 0 -> 0.5 scrub video; 0.5 -> 1 fade out
-  useMotionValueEvent(scrollYProgress, "change", (p) => {
-    const v = videoRef.current;
-    if (!v || !v.duration || isNaN(v.duration)) return;
-    const scrub = Math.min(Math.max(p / 0.5, 0), 1);
-    const target = scrub * v.duration;
-    // avoid jitter
-    if (Math.abs(v.currentTime - target) > 0.03) {
-      v.currentTime = target;
-    }
+  useMotionValueEvent(opacity, "change", (v) => {
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.opacity = String(v);
   });
-
-  const opacity = useTransform(scrollYProgress, [0, 0.5, 1], [1, 1, 0.4]);
-  const scale = useTransform(scrollYProgress, [0.5, 1], [1, 0.92]);
 
   return (
-    <section
-      id="inicio"
-      ref={containerRef}
-      className="relative w-full min-h-[250vh]"
-    >
-      <div className="sticky top-0 left-0 h-screen w-full overflow-hidden">
-        <motion.div
-          style={{ opacity, scale }}
-          className="absolute inset-0 w-full h-full"
-        >
-          <video
-            ref={videoRef}
-            src="/navaja.mp4"
-            muted
-            playsInline
-            preload="auto"
-            className="w-full h-full object-cover"
-          />
-        </motion.div>
-      </div>
-    </section>
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 w-full h-screen -z-10 pointer-events-none"
+      aria-hidden
+    />
   );
 }
 
