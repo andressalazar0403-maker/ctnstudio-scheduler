@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -174,18 +175,49 @@ function NavBtn({
 
 /* ---------- Sección 1: hero / animación ---------- */
 function HeroSection() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end end"],
+  });
+
+  // 0 -> 0.5 scrub video; 0.5 -> 1 fade out
+  useMotionValueEvent(scrollYProgress, "change", (p) => {
+    const v = videoRef.current;
+    if (!v || !v.duration || isNaN(v.duration)) return;
+    const scrub = Math.min(Math.max(p / 0.5, 0), 1);
+    const target = scrub * v.duration;
+    // avoid jitter
+    if (Math.abs(v.currentTime - target) > 0.03) {
+      v.currentTime = target;
+    }
+  });
+
+  const opacity = useTransform(scrollYProgress, [0, 0.5, 1], [1, 1, 0.4]);
+  const scale = useTransform(scrollYProgress, [0.5, 1], [1, 0.92]);
+
   return (
     <section
       id="inicio"
-      className="relative min-h-[calc(100vh-60px)] flex items-center justify-center px-6"
+      ref={containerRef}
+      className="relative w-full min-h-[250vh]"
     >
-      <div
-        id="razor-animation-slot"
-        className="relative w-full max-w-3xl aspect-square rounded-3xl border border-primary/20 bg-card/30 flex items-center justify-center"
-        style={{ boxShadow: "var(--glow-purple)" }}
-      >
-        {/* TODO: Cris añadirá aquí los 40 frames secuenciales de la navaja */}
-        <p className="text-muted-foreground text-sm">Espacio reservado para la animación</p>
+      <div className="sticky top-0 h-screen w-screen overflow-hidden -ml-[calc((100vw-100%)/2)]">
+        <motion.div
+          style={{ opacity, scale }}
+          className="absolute inset-0 w-full h-full"
+        >
+          <video
+            ref={videoRef}
+            src="/navaja.mp4"
+            muted
+            playsInline
+            preload="auto"
+            className="w-full h-full object-cover"
+          />
+        </motion.div>
       </div>
     </section>
   );
