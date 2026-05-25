@@ -23,7 +23,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Sparkles, ArrowLeft, Plus, Trash2, XCircle, UserX, Unlock, Ban } from "lucide-react";
+import {
+  Sparkles,
+  ArrowLeft,
+  Plus,
+  Trash2,
+  XCircle,
+  UserX,
+  Unlock,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  Euro,
+  CalendarDays,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -73,16 +93,16 @@ function AdminPage() {
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <Tabs defaultValue="agenda">
+        <Tabs defaultValue="calendario">
           <TabsList className="mb-6">
+            <TabsTrigger value="calendario">Calendario</TabsTrigger>
             <TabsTrigger value="agenda">Agenda</TabsTrigger>
-            <TabsTrigger value="nueva">Nueva cita</TabsTrigger>
             <TabsTrigger value="servicios">Servicios</TabsTrigger>
             <TabsTrigger value="horario">Horario</TabsTrigger>
             <TabsTrigger value="clientes">Clientes</TabsTrigger>
           </TabsList>
+          <TabsContent value="calendario"><CalendarTab /></TabsContent>
           <TabsContent value="agenda"><AgendaTab /></TabsContent>
-          <TabsContent value="nueva"><NewAppointmentTab /></TabsContent>
           <TabsContent value="servicios"><ServicesTab /></TabsContent>
           <TabsContent value="horario"><HoursTab /></TabsContent>
           <TabsContent value="clientes"><ClientsTab /></TabsContent>
