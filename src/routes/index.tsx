@@ -52,43 +52,33 @@ function HomePage() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [framesReady, setFramesReady] = useState(0);
 
-  // Pre-carga bloqueante de los 192 fotogramas
+  // Pre-carga REAL bloqueante de los 192 fotogramas con Promise.all
   useEffect(() => {
     let cancelled = false;
     let loaded = 0;
-    const minTimeMs = 1000;
-    const startedAt = performance.now();
 
-    const finish = () => {
-      if (cancelled) return;
-      const elapsed = performance.now() - startedAt;
-      const wait = Math.max(0, minTimeMs - elapsed);
-      setTimeout(() => {
-        if (!cancelled) setIsAppLoading(false);
-      }, wait);
-    };
+    const promises = FRAME_URLS.map(
+      (url) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.decoding = "async";
+          const done = () => {
+            loaded += 1;
+            if (!cancelled) setFramesReady(loaded);
+            resolve();
+          };
+          img.onload = done;
+          img.onerror = done;
+          img.src = url;
+        }),
+    );
 
-    FRAME_URLS.forEach((url) => {
-      const img = new Image();
-      img.decoding = "async";
-      const done = () => {
-        loaded += 1;
-        if (!cancelled) setFramesReady(loaded);
-        if (loaded >= FRAME_COUNT) finish();
-      };
-      img.onload = done;
-      img.onerror = done;
-      img.src = url;
-    });
-
-    // Failsafe: no quedarse atascado más de 8s
-    const failsafe = setTimeout(() => {
+    Promise.all(promises).then(() => {
       if (!cancelled) setIsAppLoading(false);
-    }, 8000);
+    });
 
     return () => {
       cancelled = true;
-      clearTimeout(failsafe);
     };
   }, []);
 
@@ -108,6 +98,13 @@ function HomePage() {
     enabled: isAuthed,
   });
   const isAdmin = !!adminStatus?.isAdmin;
+
+  // Redirección automática del jefe al dashboard exclusivo
+  useEffect(() => {
+    if (isAdmin && !isAppLoading) {
+      nav({ to: "/admin" });
+    }
+  }, [isAdmin, isAppLoading, nav]);
 
   const fetchProfile = useServerFn(getMyProfile);
   const { data: profile } = useQuery({
@@ -297,9 +294,14 @@ function HeroSequence() {
   const [frameIndex, setFrameIndex] = useState(0);
 
   const { scrollYProgress } = useScroll();
-  const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
-  const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
-  const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
+  const smooth = useSpring(scrollYProgress, {
+    damping: 40,
+    stiffness: 350,
+    mass: 0.4,
+    restDelta: 0.0001,
+  });
+  const frame = useTransform(smooth, [0, 0.85], [0, FRAME_COUNT - 1], { clamp: true });
+  const opacity = useTransform(smooth, [0.85, 1], [1, 0.3], { clamp: true });
 
   useMotionValueEvent(frame, "change", (v) => {
     const idx = Math.round(v);
