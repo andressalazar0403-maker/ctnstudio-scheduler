@@ -294,9 +294,14 @@ function HeroSequence() {
   const [frameIndex, setFrameIndex] = useState(0);
 
   const { scrollYProgress } = useScroll();
-  const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
-  const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
-  const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
+  const smooth = useSpring(scrollYProgress, {
+    damping: 40,
+    stiffness: 350,
+    mass: 0.4,
+    restDelta: 0.0001,
+  });
+  const frame = useTransform(smooth, [0, 0.85], [0, FRAME_COUNT - 1], { clamp: true });
+  const opacity = useTransform(smooth, [0.85, 1], [1, 0.3], { clamp: true });
 
   useMotionValueEvent(frame, "change", (v) => {
     const idx = Math.round(v);
