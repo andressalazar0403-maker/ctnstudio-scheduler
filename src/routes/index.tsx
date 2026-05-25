@@ -239,6 +239,58 @@ const FRAME_URLS = Array.from(
   (_, i) => `${FRAME_BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`,
 );
 
+/* ---------- Pantalla de carga inicial ---------- */
+function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: number }) {
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  return (
+    <div
+      aria-hidden={!visible}
+      className={cn(
+        "fixed inset-0 z-[100] flex flex-col items-center justify-center transition-opacity duration-700",
+        visible ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+      style={{ backgroundColor: "#050505" }}
+    >
+      <div
+        className="relative mb-8 h-14 w-14"
+        style={{ filter: "drop-shadow(0 0 18px rgba(168, 85, 247, 0.55))" }}
+      >
+        <span
+          className="absolute inset-0 rounded-full border-2 border-white/10"
+          aria-hidden
+        />
+        <span
+          className="absolute inset-0 animate-spin rounded-full border-2 border-transparent"
+          style={{
+            borderTopColor: "#a855f7",
+            borderRightColor: "#7c3aed",
+            animationDuration: "0.9s",
+          }}
+          aria-hidden
+        />
+      </div>
+      <div
+        className="text-3xl sm:text-4xl text-white tracking-[0.35em]"
+        style={{ fontFamily: "'Archivo Black', sans-serif" }}
+      >
+        CTNSTUDIO
+      </div>
+      <div className="mt-6 h-px w-40 overflow-hidden bg-white/10">
+        <div
+          className="h-full transition-[width] duration-200"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, #a855f7, #7c3aed)",
+          }}
+        />
+      </div>
+      <div className="mt-3 text-[10px] uppercase tracking-[0.4em] text-white/40">
+        Cargando experiencia · {pct}%
+      </div>
+    </div>
+  );
+}
+
 function HeroSequence() {
   const imgRef = useRef<HTMLImageElement>(null);
   const currentFrameRef = useRef(0);
