@@ -49,6 +49,58 @@ function HomePage() {
   const nav = useNavigate();
   const isAuthed = !!user;
 
+  const [isAppLoading, setIsAppLoading] = useState(true);
+  const [framesReady, setFramesReady] = useState(0);
+
+  // Pre-carga bloqueante de los 192 fotogramas
+  useEffect(() => {
+    let cancelled = false;
+    let loaded = 0;
+    const minTimeMs = 1000;
+    const startedAt = performance.now();
+
+    const finish = () => {
+      if (cancelled) return;
+      const elapsed = performance.now() - startedAt;
+      const wait = Math.max(0, minTimeMs - elapsed);
+      setTimeout(() => {
+        if (!cancelled) setIsAppLoading(false);
+      }, wait);
+    };
+
+    FRAME_URLS.forEach((url) => {
+      const img = new Image();
+      img.decoding = "async";
+      const done = () => {
+        loaded += 1;
+        if (!cancelled) setFramesReady(loaded);
+        if (loaded >= FRAME_COUNT) finish();
+      };
+      img.onload = done;
+      img.onerror = done;
+      img.src = url;
+    });
+
+    // Failsafe: no quedarse atascado más de 8s
+    const failsafe = setTimeout(() => {
+      if (!cancelled) setIsAppLoading(false);
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(failsafe);
+    };
+  }, []);
+
+  // Bloquear scroll mientras carga
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = isAppLoading ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isAppLoading]);
+
   const fetchAdmin = useServerFn(getMyAdminStatus);
   const { data: adminStatus } = useQuery({
     queryKey: ["admin-status", user?.id],
@@ -79,6 +131,7 @@ function HomePage() {
       className={cn("relative min-h-[350vh]", blocked && "blocked-mode")}
       style={{ background: "var(--gradient-hero), var(--background)" }}
     >
+      <AppLoadingScreen visible={isAppLoading} progress={framesReady / FRAME_COUNT} />
       <HeroSequence />
 
       <div className="relative z-10">
