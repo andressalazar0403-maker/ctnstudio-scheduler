@@ -502,3 +502,394 @@ function ClientsTab() {
     </div>
   );
 }
+
+/* ---------- Calendario visual estilo Booksy ---------- */
+const DAY_START_HOUR = 8;
+const DAY_END_HOUR = 21;
+const PX_PER_MIN = 1.6; // 96px por hora
+const SLOT_MIN = 30;
+
+function fmtEuro(cents: number) {
+  return `${(cents / 100).toFixed(2)}€`;
+}
+
+function CalendarTab() {
+  const qc = useQueryClient();
+  const [day, setDay] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [newSlot, setNewSlot] = useState<Date | null>(null);
+
+  const fetchList = useServerFn(adminListAppointments);
+  const fetchServices = useServerFn(listServices);
+  const fetchClients = useServerFn(adminListClients);
+  const createFn = useServerFn(adminCreateAppointment);
+  const cancelFn = useServerFn(adminCancelAppointment);
+  const noShowFn = useServerFn(adminMarkNoShow);
+
+  const dayEnd = new Date(day);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  const { data: rows } = useQuery({
+    queryKey: ["admin-cal", day.toISOString()],
+    queryFn: () =>
+      fetchList({ data: { fromIso: day.toISOString(), toIso: dayEnd.toISOString() } }),
+  });
+  const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices() });
+  const { data: clients } = useQuery({ queryKey: ["admin-clients"], queryFn: () => fetchClients() });
+
+  const scheduled = (rows ?? []).filter((a) => a.status === "scheduled");
+  const totalCents = scheduled.reduce((acc, a) => {
+    const svc = Array.isArray(a.services) ? a.services[0] : a.services;
+    return acc + (svc?.price_cents ?? 0);
+  }, 0);
+
+  function shiftDay(delta: number) {
+    const d = new Date(day);
+    d.setDate(d.getDate() + delta);
+    setDay(d);
+  }
+
+  const slots: Date[] = [];
+  for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) {
+    for (let m = 0; m < 60; m += SLOT_MIN) {
+      const d = new Date(day);
+      d.setHours(h, m, 0, 0);
+      slots.push(d);
+    }
+  }
+
+  function topForTime(t: Date) {
+    const mins = (t.getHours() - DAY_START_HOUR) * 60 + t.getMinutes();
+    return mins * PX_PER_MIN;
+  }
+
+  const dayLabel = day.toLocaleDateString("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const COLORS = [
+    "from-purple-500/80 to-purple-700/80 border-purple-300/40",
+    "from-orange-500/80 to-orange-700/80 border-orange-300/40",
+    "from-emerald-500/80 to-emerald-700/80 border-emerald-300/40",
+    "from-sky-500/80 to-sky-700/80 border-sky-300/40",
+    "from-pink-500/80 to-pink-700/80 border-pink-300/40",
+  ];
+
+  async function doCancel(id: string) {
+    await cancelFn({ data: { id } });
+    toast.success("Cancelada");
+    qc.invalidateQueries({ queryKey: ["admin-cal"] });
+  }
+  async function doNoShow(id: string) {
+    await noShowFn({ data: { id } });
+    toast.success("Falta registrada");
+    qc.invalidateQueries({ queryKey: ["admin-cal"] });
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Panel finanzas + navegación */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="md:col-span-2 p-5 flex items-center justify-between bg-gradient-to-br from-card to-card/40">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">Día</div>
+            <div className="text-2xl font-black capitalize">{dayLabel}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => shiftDay(-1)}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const d = new Date();
+                d.setHours(0, 0, 0, 0);
+                setDay(d);
+              }}
+            >
+              <CalendarDays className="size-4 mr-1" /> Hoy
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => shiftDay(1)}>
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </Card>
+        <Card
+          className="p-5 flex items-center justify-between"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(168,85,247,0.18), rgba(255,115,0,0.18))",
+            borderColor: "rgba(168,85,247,0.35)",
+          }}
+        >
+          <div>
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">
+              Total cotizado
+            </div>
+            <div className="text-3xl font-black">{fmtEuro(totalCents)}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {scheduled.length} cita{scheduled.length === 1 ? "" : "s"} confirmadas
+            </div>
+          </div>
+          <Euro className="size-10 text-accent opacity-70" />
+        </Card>
+      </div>
+
+      {/* Grid del calendario */}
+      <Card className="overflow-hidden">
+        <div className="relative flex">
+          {/* Columna de horas */}
+          <div className="w-20 border-r border-border/60 bg-card/40">
+            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => {
+              const h = DAY_START_HOUR + i;
+              return (
+                <div
+                  key={h}
+                  className="text-xs text-muted-foreground px-3 pt-1 font-bold"
+                  style={{ height: 60 * PX_PER_MIN }}
+                >
+                  {String(h).padStart(2, "0")}:00
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Columna de slots + citas absolutas */}
+          <div className="relative flex-1">
+            {/* Slots clicables */}
+            {slots.map((s) => (
+              <button
+                key={s.toISOString()}
+                onClick={() => setNewSlot(s)}
+                className="absolute left-0 right-0 border-t border-border/30 hover:bg-primary/10 transition-colors group"
+                style={{ top: topForTime(s), height: SLOT_MIN * PX_PER_MIN }}
+              >
+                <span className="absolute right-2 top-1 text-[10px] uppercase tracking-widest text-muted-foreground opacity-0 group-hover:opacity-100">
+                  + Nueva
+                </span>
+              </button>
+            ))}
+
+            {/* Líneas horarias gruesas */}
+            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => (
+              <div
+                key={i}
+                className="absolute left-0 right-0 border-t border-border/60 pointer-events-none"
+                style={{ top: i * 60 * PX_PER_MIN }}
+              />
+            ))}
+
+            {/* Bloques de citas */}
+            {scheduled.map((a, i) => {
+              const start = new Date(a.start_at);
+              const end = new Date(a.end_at);
+              const top = topForTime(start);
+              const height = Math.max(
+                30,
+                ((end.getTime() - start.getTime()) / 60_000) * PX_PER_MIN,
+              );
+              const svc = Array.isArray(a.services) ? a.services[0] : a.services;
+              const p = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
+              const who = a.client_name ?? p?.full_name ?? p?.email ?? "Cliente";
+              const color = COLORS[i % COLORS.length];
+              return (
+                <div
+                  key={a.id}
+                  className={cn(
+                    "absolute left-2 right-2 rounded-xl border bg-gradient-to-br p-3 text-white shadow-lg backdrop-blur-sm overflow-hidden group/appt",
+                    color,
+                  )}
+                  style={{ top: top + 1, height: height - 2 }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold opacity-90">
+                        {start.toLocaleTimeString("es-ES", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        ·{" "}
+                        {Math.round((end.getTime() - start.getTime()) / 60_000)} min
+                      </div>
+                      <div className="text-sm font-black truncate">{svc?.name ?? "Servicio"}</div>
+                      <div className="text-xs truncate opacity-90">{who}</div>
+                      {svc?.price_cents != null && (
+                        <div className="text-xs font-bold opacity-90">{fmtEuro(svc.price_cents)}</div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1 opacity-0 group-hover/appt:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          doNoShow(a.id);
+                        }}
+                        title="Marcar falta"
+                        className="rounded bg-black/30 hover:bg-black/50 p-1"
+                      >
+                        <UserX className="size-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          doCancel(a.id);
+                        }}
+                        title="Cancelar"
+                        className="rounded bg-black/30 hover:bg-black/50 p-1"
+                      >
+                        <XCircle className="size-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Altura total */}
+            <div style={{ height: (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MIN }} />
+          </div>
+        </div>
+      </Card>
+
+      {/* Diálogo: nueva cita manual */}
+      <NewAppointmentDialog
+        open={!!newSlot}
+        slot={newSlot}
+        services={services ?? []}
+        clients={clients ?? []}
+        onClose={() => setNewSlot(null)}
+        onCreate={async ({ serviceId, name, phone, startAt }) => {
+          try {
+            await createFn({
+              data: { serviceId, startAt, clientName: name, clientPhone: phone },
+            });
+            toast.success("Cita creada");
+            setNewSlot(null);
+            qc.invalidateQueries({ queryKey: ["admin-cal"] });
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Error");
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function NewAppointmentDialog({
+  open,
+  slot,
+  services,
+  clients,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  slot: Date | null;
+  services: { id: string; name: string; duration_minutes: number; price_cents: number }[];
+  clients: { id: string; full_name: string | null; email: string | null }[];
+  onClose: () => void;
+  onCreate: (v: { serviceId: string; name: string; phone: string; startAt: string }) => Promise<void>;
+}) {
+  const [serviceId, setServiceId] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  function pickClient(id: string) {
+    if (!id) return;
+    const c = clients.find((x) => x.id === id);
+    if (c) setName(c.full_name ?? c.email ?? "");
+  }
+
+  async function submit() {
+    if (!slot || !serviceId || !name || !phone) {
+      toast.error("Completa servicio, cliente y teléfono");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onCreate({ serviceId, name, phone, startAt: slot.toISOString() });
+      setServiceId("");
+      setName("");
+      setPhone("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Nueva cita ·{" "}
+            {slot?.toLocaleString("es-ES", {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Servicio</Label>
+            <select
+              value={serviceId}
+              onChange={(e) => setServiceId(e.target.value)}
+              className="w-full mt-1 p-2 rounded-md bg-input border border-border"
+            >
+              <option value="">— Elegir —</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {s.duration_minutes}min · {fmtEuro(s.price_cents)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Cliente existente (opcional)</Label>
+            <select
+              onChange={(e) => pickClient(e.target.value)}
+              className="w-full mt-1 p-2 rounded-md bg-input border border-border"
+            >
+              <option value="">— Cliente nuevo —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name ?? c.email}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Nombre</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
+          </div>
+          <div>
+            <Label>Teléfono</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={submitting}
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
+          >
+            <Plus className="size-4 mr-1" /> Crear cita
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
