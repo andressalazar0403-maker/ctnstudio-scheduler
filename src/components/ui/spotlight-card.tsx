@@ -28,7 +28,7 @@ export function GlowCard({
   onClick,
   as = "div",
 }: GlowCardProps) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const color = COLOR_MAP[glowColor];
 
   function handleMove(e: React.MouseEvent | React.TouchEvent) {
@@ -88,7 +88,7 @@ export function GlowCard({
   if (as === "button" || onClick) {
     return (
       <button
-        ref={ref as React.RefObject<HTMLButtonElement> as unknown as React.RefObject<HTMLDivElement>}
+        ref={ref as React.RefObject<HTMLButtonElement>}
         onMouseMove={handleMove}
         onTouchMove={handleMove}
         onClick={onClick}
@@ -102,7 +102,13 @@ export function GlowCard({
   }
 
   return (
-    <div ref={ref} onMouseMove={handleMove} onTouchMove={handleMove} className={baseClass} style={style}>
+    <div
+      ref={ref as React.RefObject<HTMLDivElement>}
+      onMouseMove={handleMove}
+      onTouchMove={handleMove}
+      className={baseClass}
+      style={style}
+    >
       {inner}
     </div>
   );
