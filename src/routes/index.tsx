@@ -241,8 +241,6 @@ const FRAME_URLS = Array.from(
 
 function HeroSequence() {
   const imgRef = useRef<HTMLImageElement>(null);
-  const imagesRef = useRef<HTMLImageElement[]>([]);
-  const loadedRef = useRef<boolean[]>(new Array(FRAME_COUNT).fill(false));
   const currentFrameRef = useRef(0);
   const [frameIndex, setFrameIndex] = useState(0);
 
@@ -250,25 +248,6 @@ function HeroSequence() {
   const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
   const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
   const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
-
-  // Precargar todos los frames
-  useEffect(() => {
-    let cancelled = false;
-    FRAME_URLS.forEach((url, i) => {
-      const img = new Image();
-      img.decoding = "async";
-      img.src = url;
-      img.onload = () => {
-        if (cancelled) return;
-        loadedRef.current[i] = true;
-        if (i === 0) setFrameIndex(0);
-      };
-      imagesRef.current[i] = img;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useMotionValueEvent(frame, "change", (v) => {
     const idx = Math.round(v);
