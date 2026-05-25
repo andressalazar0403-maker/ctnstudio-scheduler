@@ -52,43 +52,33 @@ function HomePage() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [framesReady, setFramesReady] = useState(0);
 
-  // Pre-carga bloqueante de los 192 fotogramas
+  // Pre-carga REAL bloqueante de los 192 fotogramas con Promise.all
   useEffect(() => {
     let cancelled = false;
     let loaded = 0;
-    const minTimeMs = 1000;
-    const startedAt = performance.now();
 
-    const finish = () => {
-      if (cancelled) return;
-      const elapsed = performance.now() - startedAt;
-      const wait = Math.max(0, minTimeMs - elapsed);
-      setTimeout(() => {
-        if (!cancelled) setIsAppLoading(false);
-      }, wait);
-    };
+    const promises = FRAME_URLS.map(
+      (url) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.decoding = "async";
+          const done = () => {
+            loaded += 1;
+            if (!cancelled) setFramesReady(loaded);
+            resolve();
+          };
+          img.onload = done;
+          img.onerror = done;
+          img.src = url;
+        }),
+    );
 
-    FRAME_URLS.forEach((url) => {
-      const img = new Image();
-      img.decoding = "async";
-      const done = () => {
-        loaded += 1;
-        if (!cancelled) setFramesReady(loaded);
-        if (loaded >= FRAME_COUNT) finish();
-      };
-      img.onload = done;
-      img.onerror = done;
-      img.src = url;
-    });
-
-    // Failsafe: no quedarse atascado más de 8s
-    const failsafe = setTimeout(() => {
+    Promise.all(promises).then(() => {
       if (!cancelled) setIsAppLoading(false);
-    }, 8000);
+    });
 
     return () => {
       cancelled = true;
-      clearTimeout(failsafe);
     };
   }, []);
 
@@ -108,6 +98,13 @@ function HomePage() {
     enabled: isAuthed,
   });
   const isAdmin = !!adminStatus?.isAdmin;
+
+  // Redirección automática del jefe al dashboard exclusivo
+  useEffect(() => {
+    if (isAdmin && !isAppLoading) {
+      nav({ to: "/admin" });
+    }
+  }, [isAdmin, isAppLoading, nav]);
 
   const fetchProfile = useServerFn(getMyProfile);
   const { data: profile } = useQuery({
