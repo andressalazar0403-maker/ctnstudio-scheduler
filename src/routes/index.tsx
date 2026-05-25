@@ -17,6 +17,7 @@ import { getMyAdminStatus } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
+import { GlowCard } from "@/components/ui/spotlight-card";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -48,6 +49,58 @@ function HomePage() {
   const nav = useNavigate();
   const isAuthed = !!user;
 
+  const [isAppLoading, setIsAppLoading] = useState(true);
+  const [framesReady, setFramesReady] = useState(0);
+
+  // Pre-carga bloqueante de los 192 fotogramas
+  useEffect(() => {
+    let cancelled = false;
+    let loaded = 0;
+    const minTimeMs = 1000;
+    const startedAt = performance.now();
+
+    const finish = () => {
+      if (cancelled) return;
+      const elapsed = performance.now() - startedAt;
+      const wait = Math.max(0, minTimeMs - elapsed);
+      setTimeout(() => {
+        if (!cancelled) setIsAppLoading(false);
+      }, wait);
+    };
+
+    FRAME_URLS.forEach((url) => {
+      const img = new Image();
+      img.decoding = "async";
+      const done = () => {
+        loaded += 1;
+        if (!cancelled) setFramesReady(loaded);
+        if (loaded >= FRAME_COUNT) finish();
+      };
+      img.onload = done;
+      img.onerror = done;
+      img.src = url;
+    });
+
+    // Failsafe: no quedarse atascado más de 8s
+    const failsafe = setTimeout(() => {
+      if (!cancelled) setIsAppLoading(false);
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(failsafe);
+    };
+  }, []);
+
+  // Bloquear scroll mientras carga
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = isAppLoading ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isAppLoading]);
+
   const fetchAdmin = useServerFn(getMyAdminStatus);
   const { data: adminStatus } = useQuery({
     queryKey: ["admin-status", user?.id],
@@ -78,6 +131,7 @@ function HomePage() {
       className={cn("relative min-h-[350vh]", blocked && "blocked-mode")}
       style={{ background: "var(--gradient-hero), var(--background)" }}
     >
+      <AppLoadingScreen visible={isAppLoading} progress={framesReady / FRAME_COUNT} />
       <HeroSequence />
 
       <div className="relative z-10">
@@ -185,10 +239,60 @@ const FRAME_URLS = Array.from(
   (_, i) => `${FRAME_BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`,
 );
 
+/* ---------- Pantalla de carga inicial ---------- */
+function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: number }) {
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  return (
+    <div
+      aria-hidden={!visible}
+      className={cn(
+        "fixed inset-0 z-[100] flex flex-col items-center justify-center transition-opacity duration-700",
+        visible ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+      style={{ backgroundColor: "#050505" }}
+    >
+      <div
+        className="relative mb-8 h-14 w-14"
+        style={{ filter: "drop-shadow(0 0 18px rgba(168, 85, 247, 0.55))" }}
+      >
+        <span
+          className="absolute inset-0 rounded-full border-2 border-white/10"
+          aria-hidden
+        />
+        <span
+          className="absolute inset-0 animate-spin rounded-full border-2 border-transparent"
+          style={{
+            borderTopColor: "#a855f7",
+            borderRightColor: "#7c3aed",
+            animationDuration: "0.9s",
+          }}
+          aria-hidden
+        />
+      </div>
+      <div
+        className="text-3xl sm:text-4xl text-white tracking-[0.35em]"
+        style={{ fontFamily: "'Archivo Black', sans-serif" }}
+      >
+        CTNSTUDIO
+      </div>
+      <div className="mt-6 h-px w-40 overflow-hidden bg-white/10">
+        <div
+          className="h-full transition-[width] duration-200"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, #a855f7, #7c3aed)",
+          }}
+        />
+      </div>
+      <div className="mt-3 text-[10px] uppercase tracking-[0.4em] text-white/40">
+        Cargando experiencia · {pct}%
+      </div>
+    </div>
+  );
+}
+
 function HeroSequence() {
   const imgRef = useRef<HTMLImageElement>(null);
-  const imagesRef = useRef<HTMLImageElement[]>([]);
-  const loadedRef = useRef<boolean[]>(new Array(FRAME_COUNT).fill(false));
   const currentFrameRef = useRef(0);
   const [frameIndex, setFrameIndex] = useState(0);
 
@@ -196,25 +300,6 @@ function HeroSequence() {
   const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });
   const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });
   const opacity = useTransform(smooth, [0.8, 1], [1, 0.27], { clamp: true });
-
-  // Precargar todos los frames
-  useEffect(() => {
-    let cancelled = false;
-    FRAME_URLS.forEach((url, i) => {
-      const img = new Image();
-      img.decoding = "async";
-      img.src = url;
-      img.onload = () => {
-        if (cancelled) return;
-        loadedRef.current[i] = true;
-        if (i === 0) setFrameIndex(0);
-      };
-      imagesRef.current[i] = img;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useMotionValueEvent(frame, "change", (v) => {
     const idx = Math.round(v);
@@ -307,27 +392,29 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
         {(services ?? []).map((s) => {
           const active = s.slug === slug;
           return (
-            <button
+            <GlowCard
               key={s.id}
               onClick={() => setSlug(s.slug)}
-              className={cn(
-                "w-full p-5 rounded-2xl border text-left transition-all flex items-center justify-between gap-4",
-                active
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-card hover:border-primary/40",
-              )}
-              style={active ? { boxShadow: "var(--glow-purple)" } : undefined}
+              active={active}
+              glowColor={active ? "orange" : "purple"}
             >
-              <div>
-                <div className="text-lg sm:text-xl font-bold">{s.name}</div>
-                <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                  <Clock className="size-3" /> {s.duration_minutes} min
+              <div className="p-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-lg sm:text-xl font-bold">{s.name}</div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <Clock className="size-3" /> {s.duration_minutes} min
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "text-2xl font-black transition-colors",
+                    active ? "text-[hsl(24_100%_55%)]" : "text-accent",
+                  )}
+                >
+                  {(s.price_cents / 100).toFixed(2)}€
                 </div>
               </div>
-              <div className="text-2xl font-black text-accent">
-                {(s.price_cents / 100).toFixed(2)}€
-              </div>
-            </button>
+            </GlowCard>
           );
         })}
       </div>
