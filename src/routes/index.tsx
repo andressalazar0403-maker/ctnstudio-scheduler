@@ -392,27 +392,29 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
         {(services ?? []).map((s) => {
           const active = s.slug === slug;
           return (
-            <button
+            <GlowCard
               key={s.id}
               onClick={() => setSlug(s.slug)}
-              className={cn(
-                "w-full p-5 rounded-2xl border text-left transition-all flex items-center justify-between gap-4",
-                active
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-card hover:border-primary/40",
-              )}
-              style={active ? { boxShadow: "var(--glow-purple)" } : undefined}
+              active={active}
+              glowColor={active ? "orange" : "purple"}
             >
-              <div>
-                <div className="text-lg sm:text-xl font-bold">{s.name}</div>
-                <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                  <Clock className="size-3" /> {s.duration_minutes} min
+              <div className="p-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-lg sm:text-xl font-bold">{s.name}</div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <Clock className="size-3" /> {s.duration_minutes} min
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "text-2xl font-black transition-colors",
+                    active ? "text-[hsl(24_100%_55%)]" : "text-accent",
+                  )}
+                >
+                  {(s.price_cents / 100).toFixed(2)}€
                 </div>
               </div>
-              <div className="text-2xl font-black text-accent">
-                {(s.price_cents / 100).toFixed(2)}€
-              </div>
-            </button>
+            </GlowCard>
           );
         })}
       </div>
