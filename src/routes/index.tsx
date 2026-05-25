@@ -17,6 +17,7 @@ import { getMyAdminStatus } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
+import { GlowCard } from "@/components/ui/spotlight-card";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
