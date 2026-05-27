@@ -293,43 +293,100 @@ function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: n
 }
 
 function HeroSequence() {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imagesRef = useRef<HTMLImageElement[]>([]);
   const currentFrameRef = useRef(0);
-  const [frameIndex, setFrameIndex] = useState(0);
+  const opacityRef = useRef(1);
+  const rafRef = useRef<number | null>(null);
+
+  // Cargar las 96 imágenes pares una sola vez
+  useEffect(() => {
+    const imgs: HTMLImageElement[] = EVEN_FRAME_URLS.map((url) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      return img;
+    });
+    imagesRef.current = imgs;
+  }, []);
 
   const { scrollYProgress } = useScroll();
+  // Spring suave estilo Apple
   const smooth = useSpring(scrollYProgress, {
-    damping: 40,
-    stiffness: 350,
-    mass: 0.4,
+    stiffness: 60,
+    damping: 20,
+    mass: 0.3,
     restDelta: 0.0001,
   });
-  const frame = useTransform(smooth, [0, 0.85], [0, FRAME_COUNT - 1], { clamp: true });
+  const frame = useTransform(smooth, [0, 0.85], [0, EVEN_FRAME_COUNT - 1], { clamp: true });
   const opacity = useTransform(smooth, [0.85, 1], [1, 0.3], { clamp: true });
 
-  useMotionValueEvent(frame, "change", (v) => {
-    const idx = Math.round(v);
-    if (idx === currentFrameRef.current) return;
-    currentFrameRef.current = idx;
-    setFrameIndex(idx);
-  });
+  // Canvas + DPR + object-cover
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const draw = () => {
+      const imgs = imagesRef.current;
+      const idx = currentFrameRef.current;
+      const img = imgs[idx];
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = opacityRef.current;
+      if (img && img.complete && img.naturalWidth > 0) {
+        // object-cover
+        const ir = img.naturalWidth / img.naturalHeight;
+        const cr = W / H;
+        let dw = W, dh = H, dx = 0, dy = 0;
+        if (ir > cr) {
+          dh = H;
+          dw = H * ir;
+          dx = (W - dw) / 2;
+        } else {
+          dw = W;
+          dh = W / ir;
+          dy = (H - dh) / 2;
+        }
+        ctx.drawImage(img, dx, dy, dw, dh);
+      }
+      ctx.globalAlpha = 1;
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    rafRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener("resize", resize);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  useMotionValueEvent(frame, "change", (v) => {
+    currentFrameRef.current = Math.round(v);
+  });
   useMotionValueEvent(opacity, "change", (v) => {
-    const img = imgRef.current;
-    if (img) img.style.opacity = String(v);
+    opacityRef.current = v;
   });
 
   return (
-    <img
-      ref={imgRef}
-      src={FRAME_URLS[frameIndex]}
-      alt=""
+    <canvas
+      ref={canvasRef}
       aria-hidden
-      decoding="async"
-      fetchPriority="high"
-      className="fixed inset-0 z-0 h-screen w-full object-cover pointer-events-none select-none"
-      style={{ opacity: opacity.get(), transform: "translateZ(0)" }}
-      draggable={false}
+      className="fixed inset-0 z-0 h-screen w-full pointer-events-none select-none"
+      style={{ transform: "translateZ(0)", background: "#050505" }}
     />
   );
 }
