@@ -15,6 +15,10 @@ import {
   adminDeleteService,
   adminListBusinessHours,
   adminSetBusinessHours,
+  adminMoveAppointment,
+  adminListClientCards,
+  adminUpsertClientCard,
+  adminDeleteClientCard,
 } from "@/lib/admin.functions";
 import { listServices } from "@/lib/booking.functions";
 import { Button } from "@/components/ui/button";
@@ -37,6 +41,10 @@ import {
   ChevronRight,
   Euro,
   CalendarDays,
+  Mail,
+  Phone,
+  Search,
+  User as UserIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -44,7 +52,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
