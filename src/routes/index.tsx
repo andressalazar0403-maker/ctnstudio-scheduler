@@ -236,6 +236,10 @@ const FRAME_URLS = Array.from(
   (_, i) => `${FRAME_BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`,
 );
 
+/** Solo frames pares → 96 imágenes para precarga más rápida y suave. */
+const EVEN_FRAME_URLS = FRAME_URLS.filter((_, i) => i % 2 === 0);
+const EVEN_FRAME_COUNT = EVEN_FRAME_URLS.length;
+
 /* ---------- Pantalla de carga inicial ---------- */
 function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: number }) {
   const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
