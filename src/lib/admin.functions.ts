@@ -232,3 +232,90 @@ export const adminSetBusinessHours = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+/* ============ Fichas de clientes (tabla clients) ============ */
+
+export const adminListClientCards = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { data, error } = await supabaseAdmin
+      .from("clients")
+      .select("id, name, email, phone, notes, created_at")
+      .order("name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpsertClientCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      id: z.string().uuid().optional(),
+      name: z.string().min(1).max(120),
+      email: z.string().email().max(160).optional().nullable(),
+      phone: z.string().max(40).optional().nullable(),
+      notes: z.string().max(2000).optional().nullable(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const payload = {
+      name: data.name,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      notes: data.notes ?? null,
+    };
+    if (data.id) {
+      const { error } = await supabaseAdmin.from("clients").update(payload).eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { id: data.id };
+    }
+    const { data: row, error } = await supabaseAdmin
+      .from("clients")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: row.id };
+  });
+
+export const adminDeleteClientCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { error } = await supabaseAdmin.from("clients").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ============ Mover cita (drag & drop) ============ */
+
+export const adminMoveAppointment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      id: z.string().uuid(),
+      startAt: z.string().datetime(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { data: appt, error: e1 } = await supabaseAdmin
+      .from("appointments")
+      .select("service_id, services(duration_minutes)")
+      .eq("id", data.id)
+      .single();
+    if (e1 || !appt) throw new Error(e1?.message ?? "Cita no encontrada");
+    const svc = Array.isArray(appt.services) ? appt.services[0] : appt.services;
+    const duration = svc?.duration_minutes ?? 30;
+    const start = new Date(data.startAt);
+    const end = new Date(start.getTime() + duration * 60_000);
+    const { error } = await supabaseAdmin
+      .from("appointments")
+      .update({ start_at: start.toISOString(), end_at: end.toISOString() })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
