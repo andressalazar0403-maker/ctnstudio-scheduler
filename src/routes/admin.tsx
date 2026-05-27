@@ -398,7 +398,16 @@ function ServicesTab() {
                   onChange={(e) => patch(s.id, { price_cents: Math.round(Number(e.target.value) * 100) })}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <label className="flex flex-col items-center gap-1">
+                  <span className="text-xs text-muted-foreground">Color</span>
+                  <input
+                    type="color"
+                    value={d.color}
+                    onChange={(e) => patch(s.id, { color: e.target.value })}
+                    className="h-9 w-9 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </label>
                 <Button size="sm" disabled={!dirty} onClick={() => save(s.id)}>
                   Guardar
                 </Button>
