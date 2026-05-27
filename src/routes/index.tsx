@@ -52,12 +52,12 @@ function HomePage() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [framesReady, setFramesReady] = useState(0);
 
-  // Pre-carga REAL bloqueante de los 192 fotogramas con Promise.all
+  // Pre-carga REAL bloqueante de los 96 fotogramas pares con Promise.all
   useEffect(() => {
     let cancelled = false;
     let loaded = 0;
 
-    const promises = FRAME_URLS.map(
+    const promises = EVEN_FRAME_URLS.map(
       (url) =>
         new Promise<void>((resolve) => {
           const img = new Image();
@@ -128,7 +128,7 @@ function HomePage() {
       className={cn("relative min-h-[350vh]", blocked && "blocked-mode")}
       style={{ background: "var(--gradient-hero), var(--background)" }}
     >
-      <AppLoadingScreen visible={isAppLoading} progress={framesReady / FRAME_COUNT} />
+      <AppLoadingScreen visible={isAppLoading} progress={framesReady / EVEN_FRAME_COUNT} />
       <HeroSequence />
 
       <div className="relative z-10">
