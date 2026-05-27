@@ -1,47 +1,101 @@
-## Hero scroll-driven con 192 frames
+# Plan: Excelencia Técnica CTNSTUDIO
 
-Reemplaza el `<video>` actual por una secuencia de 192 `.webp` servidos desde el bucket público `navaja-video-imagenes`, controlada por scroll con `framer-motion` + `useSpring`. La secuencia vive como fondo fijo a pantalla completa y todo el resto del contenido flota por encima.
+Esto es un cambio grande (canvas + calendario tipo Google Calendar + BD nueva). Lo divido en fases lógicas que se implementarán todas en este turno, pero en orden para evitar regresiones.
 
-### Cambios
+## 1. Hero con Canvas (reemplaza `<img>`)
 
-**`src/routes/index.tsx`**
+- `src/routes/index.tsx` → reemplazar `<img>` por `<canvas>` a viewport completo.
+- Cargar **96 frames pares** (índices 0, 2, 4… 190) con `Promise.all` + `new Image()`.
+- Pantalla negra `#050505` bloquea scroll hasta `Promise.all` resuelto.
+- Mapear scroll con `useScroll` + `useSpring({ stiffness: 60, damping: 20 })` → `useTransform` a índice de frame.
+- Dibujar con `requestAnimationFrame` + `ctx.drawImage` (object-cover calculado).
+- Resize listener para mantener DPR nítido.
 
-1. Borrar `HeroSection` (la del `<video src="/navaja.mp4">`) y crear `HeroSequence`.
-2. Reestructurar `HomePage`:
-   - Contenedor raíz: `relative min-h-[350vh]`.
-   - `<HeroSequence />` (fixed inset-0 -z-10).
-   - Wrapper `relative z-10` que contiene `TopNav` + un div con `id="inicio"` y `pt-[110vh]` que envuelve `ReservarSection` y `MisCitasSection`.
-3. Quitar el import de `motion` (ya no se usa `motion.div`).
+## 2. Base de datos — cambios
 
-**`HeroSequence` — lógica**
+Migración única que añade:
 
-```tsx
-const FRAME_COUNT = 192;
-const BASE = "https://lgnrmnuwjmewqxmqtwqa.supabase.co/storage/v1/object/public/navaja-video-imagenes";
-const urls = Array.from({ length: FRAME_COUNT }, (_, i) =>
-  `${BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`
-);
+- `services.color` (text, default `#a855f7`) — color por servicio.
+- `clients` (tabla nueva): `id, name, email, phone, created_at`. RLS solo admin (select/insert/update/delete).
+- `appointments.client_id` (uuid, nullable) — para vincular cita a ficha de cliente.
+- `appointments.client_email` (text) — además de `client_name` y `client_phone` ya existentes.
+- GRANTs correctos (`authenticated`, `service_role`).
+
+## 3. Server functions admin nuevas
+
+En `src/lib/admin.functions.ts`:
+
+- `listClients()` — para búsqueda predictiva.
+- `upsertClient({ name, email, phone })`.
+- `deleteClient({ id })`.
+- `updateService({ id, color, name, price_cents, duration_minutes })` — para color.
+- `moveAppointment({ id, startAt })` — para drag & drop (recalcula `end_at` con duración del servicio).
+- `updateAppointmentDetails` — para edición desde modal.
+
+## 4. Calendario cliente full-width
+
+En `src/routes/index.tsx` → `ReservarSection`:
+
+- Quitar grid `lg:grid-cols-2`. Calendario en `Card` con `w-full` y `Calendar` en escala mayor (`className` con `[&_table]:w-full [&_td]:w-[14.28%] [&_button]:w-full [&_button]:h-14`).
+- Slots debajo en grid responsivo amplio.
+
+## 5. Calendario admin pro (`src/routes/admin.tsx`)
+
+Reemplazo total de la pestaña Calendario:
+
+- **Vistas**: tabs `Día | Semana | Mes` con estado local.
+- **Navegación**: `<` `>` adaptativos (1 día / 7 días / 1 mes) + botón `Hoy`.
+- **Grid Día/Semana**: 8:00–21:00, una columna por día, filas de 30 min (px exactos para cálculo). Full `w-full h-full`.
+- **Bloques de cita**: posición absoluta calculada por start/end. Color = `service.color`. Texto blanco/contraste.
+- **Click normal en cita** → modal `AppointmentDetailDialog` (dark) con Nombre, Servicio, WhatsApp, Email + botones Cancelar/Marcar falta.
+- **Drag & Drop**: `pointerdown` en bloque → seguir cursor con `transform`, `pointerup` calcula nuevo `start_at` snap a 15 min y llama `moveAppointment`. Soporta touch.
+- **Aguja horaria**: línea absoluta morada (`#a855f7`) con etiqueta `HH:MM` flotante a la izquierda. `setInterval` cada 60 s recalcula `top`.
+- **Vista Mes**: grid 7x6 con conteo de citas por día (click → cambia a vista Día).
+- **Click en hueco vacío** → `NewAppointmentDialog` con buscador predictivo de clientes (input + lista filtrada por nombre/email/teléfono → autofill al seleccionar; "+ Crear nuevo" si no existe).
+
+## 6. Pestaña Servicios (admin)
+
+- Añadir `<input type="color">` por servicio + guardar con `updateService`.
+
+## 7. Pestaña Clientes (admin)
+
+- Lista de `clients` con buscador.
+- Botón **Eliminar** rojo sutil → `AlertDialog` de confirmación → `deleteClient`.
+
+## 8. Acceso admin
+
+Ya está: `andressalazar0403@gmail.com` en `admin_emails` + redirect en `index.tsx` cuando `isAdmin && !isAppLoading`. Sin cambios.
+
+## Detalles técnicos clave
+
+```text
+Canvas hero:
+  canvas (fixed inset-0, w-screen h-screen)
+  ├─ load: Promise.all(96 even frames as Image objects)
+  ├─ scroll → useSpring → frame index (0..95)
+  └─ rAF loop: ctx.drawImage(images[idx], computedX, Y, W, H)
+
+Admin calendar day/week:
+  Container relative h-[840px] (14h * 60px)
+  ├─ Hour rows (absolute top = hour*60)
+  ├─ Day columns (flex-1)
+  ├─ Appointment blocks: absolute top = (startMin-480)*1px, height = duration*1px
+  ├─ Time needle: absolute top = (nowMin-480)*1px, full width
+  └─ Drag: pointer events → temporary transform → snap & persist
 ```
 
-- Precargar las 192 imágenes en un `useRef<HTMLImageElement[]>` dentro de `useEffect` (crea `new Image()`, asigna `src`, las guarda en el array).
-- `<canvas>` con `className="fixed inset-0 w-full h-screen object-cover -z-10"` y un `ref`. En el primer load dimensionar el canvas a `window.innerWidth × window.innerHeight` (con `devicePixelRatio`) y redibujar en `resize`.
-- `useScroll()` global (sin `target`) → `scrollYProgress`.
-- `const smooth = useSpring(scrollYProgress, { damping: 30, stiffness: 200 });`
-- `const frame = useTransform(smooth, [0, 0.8], [0, FRAME_COUNT - 1], { clamp: true });`
-- `const opacity = useTransform(smooth, [0.8, 1], [1, 0.27]);`
-- `useMotionValueEvent(frame, "change", v => drawFrame(Math.round(v)))` — dibuja la imagen precargada con `ctx.drawImage(img, 0, 0, w, h)` usando `object-cover` (calcular escala para cubrir manteniendo ratio).
-- `useMotionValueEvent(opacity, "change", v => { canvas.style.opacity = String(v); })`.
-- Dibujar frame 0 en cuanto la primera imagen carga.
+## Archivos tocados
 
-**Por qué canvas y no `<img>` swap**: cambiar `img.src` 192 veces provoca flicker y reflow; con canvas + preload el cambio de frame es un `drawImage` instantáneo y suave bajo el spring.
+- `src/routes/index.tsx` (canvas hero + calendario cliente full-width)
+- `src/routes/admin.tsx` (reescritura calendario + clientes + colores)
+- `src/lib/admin.functions.ts` (nuevas server fns)
+- `src/lib/booking.functions.ts` (asegurar autofill maneja `client_email`)
+- Migración SQL nueva.
 
-### Lo que NO cambia
+## Riesgos / notas
 
-- `ReservarSection`, `MisCitasSection`, `TopNav`, rutas `/admin` y `/login`, lógica de booking, RLS, base de datos. Solo se toca `src/routes/index.tsx`.
-- `public/navaja.mp4` se queda (no estorba, lo borramos si quieres).
+- Es un cambio grande. Si algo se rompe, el hero canvas y la migración son lo primero a validar.
+- Drag & drop con pointer events nativo (no librería) para mantener bundle bajo.
+- La vista Mes es simple (conteos), no bloques completos, para no inflar más.
 
-### Resultado
-
-- 0–80% scroll: los 192 frames se barren con suavidad milimétrica gracias al spring.
-- 80–100% scroll: último frame congelado, fade de opacity 1 → 0.27 para que el contenido flotante se lea bien.
-- Fondo edge-to-edge sin bordes, contenedores ni sombras.
+¿Apruebo y procedo?

@@ -37,7 +37,7 @@ export const adminListAppointments = createServerFn({ method: "POST" })
     await assertAdmin((context.claims as Record<string, unknown>).email as string);
     const { data: rows, error } = await supabaseAdmin
       .from("appointments")
-      .select("id, start_at, end_at, status, client_name, client_phone, user_id, services(name, slug, duration_minutes, price_cents), profiles(full_name, email)")
+      .select("id, start_at, end_at, status, client_name, client_phone, client_email, client_id, user_id, services(name, slug, duration_minutes, price_cents, color), profiles(full_name, email)")
       .gte("start_at", data.fromIso)
       .lt("start_at", data.toIso)
       .order("start_at", { ascending: true });
@@ -53,6 +53,8 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
       startAt: z.string().datetime(),
       clientName: z.string().min(1).max(120),
       clientPhone: z.string().min(3).max(40),
+      clientEmail: z.string().email().max(160).optional().nullable(),
+      clientId: z.string().uuid().optional().nullable(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
@@ -71,6 +73,8 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
       end_at: end.toISOString(),
       client_name: data.clientName,
       client_phone: data.clientPhone,
+      client_email: data.clientEmail ?? null,
+      client_id: data.clientId ?? null,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -158,6 +162,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
       duration_minutes: z.number().int().min(5).max(600),
       price_cents: z.number().int().min(0).max(1_000_000),
       sort_order: z.number().int().min(0).max(999),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
@@ -171,6 +176,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
           duration_minutes: data.duration_minutes,
           price_cents: data.price_cents,
           sort_order: data.sort_order,
+          ...(data.color ? { color: data.color } : {}),
         })
         .eq("id", data.id);
       if (error) throw new Error(error.message);
@@ -181,6 +187,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
         duration_minutes: data.duration_minutes,
         price_cents: data.price_cents,
         sort_order: data.sort_order,
+        ...(data.color ? { color: data.color } : {}),
       });
       if (error) throw new Error(error.message);
     }
@@ -229,6 +236,93 @@ export const adminSetBusinessHours = createServerFn({ method: "POST" })
         closed: data.closed,
       })
       .eq("day_of_week", data.day_of_week);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ============ Fichas de clientes (tabla clients) ============ */
+
+export const adminListClientCards = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { data, error } = await supabaseAdmin
+      .from("clients")
+      .select("id, name, email, phone, notes, created_at")
+      .order("name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpsertClientCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      id: z.string().uuid().optional(),
+      name: z.string().min(1).max(120),
+      email: z.string().email().max(160).optional().nullable(),
+      phone: z.string().max(40).optional().nullable(),
+      notes: z.string().max(2000).optional().nullable(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const payload = {
+      name: data.name,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      notes: data.notes ?? null,
+    };
+    if (data.id) {
+      const { error } = await supabaseAdmin.from("clients").update(payload).eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { id: data.id };
+    }
+    const { data: row, error } = await supabaseAdmin
+      .from("clients")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: row.id };
+  });
+
+export const adminDeleteClientCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { error } = await supabaseAdmin.from("clients").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ============ Mover cita (drag & drop) ============ */
+
+export const adminMoveAppointment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      id: z.string().uuid(),
+      startAt: z.string().datetime(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    const { data: appt, error: e1 } = await supabaseAdmin
+      .from("appointments")
+      .select("service_id, services(duration_minutes)")
+      .eq("id", data.id)
+      .single();
+    if (e1 || !appt) throw new Error(e1?.message ?? "Cita no encontrada");
+    const svc = Array.isArray(appt.services) ? appt.services[0] : appt.services;
+    const duration = svc?.duration_minutes ?? 30;
+    const start = new Date(data.startAt);
+    const end = new Date(start.getTime() + duration * 60_000);
+    const { error } = await supabaseAdmin
+      .from("appointments")
+      .update({ start_at: start.toISOString(), end_at: end.toISOString() })
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

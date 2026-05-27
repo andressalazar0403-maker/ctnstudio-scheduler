@@ -31,6 +31,8 @@ export type Database = {
       }
       appointments: {
         Row: {
+          client_email: string | null
+          client_id: string | null
           client_name: string | null
           client_phone: string | null
           created_at: string
@@ -42,6 +44,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          client_email?: string | null
+          client_id?: string | null
           client_name?: string | null
           client_phone?: string | null
           created_at?: string
@@ -53,6 +57,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          client_email?: string | null
+          client_id?: string | null
           client_name?: string | null
           client_phone?: string | null
           created_at?: string
@@ -101,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      clients: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -133,6 +166,7 @@ export type Database = {
       }
       services: {
         Row: {
+          color: string
           duration_minutes: number
           id: string
           name: string
@@ -141,6 +175,7 @@ export type Database = {
           sort_order: number
         }
         Insert: {
+          color?: string
           duration_minutes: number
           id?: string
           name: string
@@ -149,6 +184,7 @@ export type Database = {
           sort_order?: number
         }
         Update: {
+          color?: string
           duration_minutes?: number
           id?: string
           name?: string

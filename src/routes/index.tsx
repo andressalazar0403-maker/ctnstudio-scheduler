@@ -52,12 +52,12 @@ function HomePage() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [framesReady, setFramesReady] = useState(0);
 
-  // Pre-carga REAL bloqueante de los 192 fotogramas con Promise.all
+  // Pre-carga REAL bloqueante de los 96 fotogramas pares con Promise.all
   useEffect(() => {
     let cancelled = false;
     let loaded = 0;
 
-    const promises = FRAME_URLS.map(
+    const promises = EVEN_FRAME_URLS.map(
       (url) =>
         new Promise<void>((resolve) => {
           const img = new Image();
@@ -128,7 +128,7 @@ function HomePage() {
       className={cn("relative min-h-[350vh]", blocked && "blocked-mode")}
       style={{ background: "var(--gradient-hero), var(--background)" }}
     >
-      <AppLoadingScreen visible={isAppLoading} progress={framesReady / FRAME_COUNT} />
+      <AppLoadingScreen visible={isAppLoading} progress={framesReady / EVEN_FRAME_COUNT} />
       <HeroSequence />
 
       <div className="relative z-10">
@@ -236,6 +236,10 @@ const FRAME_URLS = Array.from(
   (_, i) => `${FRAME_BASE}/frame_${String(i).padStart(3, "0")}_delay-0.04s.webp`,
 );
 
+/** Solo frames pares → 96 imágenes para precarga más rápida y suave. */
+const EVEN_FRAME_URLS = FRAME_URLS.filter((_, i) => i % 2 === 0);
+const EVEN_FRAME_COUNT = EVEN_FRAME_URLS.length;
+
 /* ---------- Pantalla de carga inicial ---------- */
 function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: number }) {
   const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
@@ -289,43 +293,100 @@ function AppLoadingScreen({ visible, progress }: { visible: boolean; progress: n
 }
 
 function HeroSequence() {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imagesRef = useRef<HTMLImageElement[]>([]);
   const currentFrameRef = useRef(0);
-  const [frameIndex, setFrameIndex] = useState(0);
+  const opacityRef = useRef(1);
+  const rafRef = useRef<number | null>(null);
+
+  // Cargar las 96 imágenes pares una sola vez
+  useEffect(() => {
+    const imgs: HTMLImageElement[] = EVEN_FRAME_URLS.map((url) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      return img;
+    });
+    imagesRef.current = imgs;
+  }, []);
 
   const { scrollYProgress } = useScroll();
+  // Spring suave estilo Apple
   const smooth = useSpring(scrollYProgress, {
-    damping: 40,
-    stiffness: 350,
-    mass: 0.4,
+    stiffness: 60,
+    damping: 20,
+    mass: 0.3,
     restDelta: 0.0001,
   });
-  const frame = useTransform(smooth, [0, 0.85], [0, FRAME_COUNT - 1], { clamp: true });
+  const frame = useTransform(smooth, [0, 0.85], [0, EVEN_FRAME_COUNT - 1], { clamp: true });
   const opacity = useTransform(smooth, [0.85, 1], [1, 0.3], { clamp: true });
 
-  useMotionValueEvent(frame, "change", (v) => {
-    const idx = Math.round(v);
-    if (idx === currentFrameRef.current) return;
-    currentFrameRef.current = idx;
-    setFrameIndex(idx);
-  });
+  // Canvas + DPR + object-cover
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const draw = () => {
+      const imgs = imagesRef.current;
+      const idx = currentFrameRef.current;
+      const img = imgs[idx];
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = opacityRef.current;
+      if (img && img.complete && img.naturalWidth > 0) {
+        // object-cover
+        const ir = img.naturalWidth / img.naturalHeight;
+        const cr = W / H;
+        let dw = W, dh = H, dx = 0, dy = 0;
+        if (ir > cr) {
+          dh = H;
+          dw = H * ir;
+          dx = (W - dw) / 2;
+        } else {
+          dw = W;
+          dh = W / ir;
+          dy = (H - dh) / 2;
+        }
+        ctx.drawImage(img, dx, dy, dw, dh);
+      }
+      ctx.globalAlpha = 1;
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    rafRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener("resize", resize);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  useMotionValueEvent(frame, "change", (v) => {
+    currentFrameRef.current = Math.round(v);
+  });
   useMotionValueEvent(opacity, "change", (v) => {
-    const img = imgRef.current;
-    if (img) img.style.opacity = String(v);
+    opacityRef.current = v;
   });
 
   return (
-    <img
-      ref={imgRef}
-      src={FRAME_URLS[frameIndex]}
-      alt=""
+    <canvas
+      ref={canvasRef}
       aria-hidden
-      decoding="async"
-      fetchPriority="high"
-      className="fixed inset-0 z-0 h-screen w-full object-cover pointer-events-none select-none"
-      style={{ opacity: opacity.get(), transform: "translateZ(0)" }}
-      draggable={false}
+      className="fixed inset-0 z-0 h-screen w-full pointer-events-none select-none"
+      style={{ transform: "translateZ(0)", background: "#050505" }}
     />
   );
 }
@@ -454,28 +515,28 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
           </div>
         </Card>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="p-4 flex justify-center">
+        <div className="space-y-6">
+          <Card className="p-4 sm:p-6 w-full">
             <Calendar
               mode="single"
               selected={date}
               onSelect={setDate}
               disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-              className="p-3 pointer-events-auto"
+              className="w-full p-0 pointer-events-auto [&_table]:w-full [&_th]:w-[14.28%] [&_td]:w-[14.28%] [&_button]:w-full [&_button]:h-14 [&_button]:text-base"
             />
           </Card>
-          <Card className="p-4">
-            <h3 className="font-bold mb-3">
+          <Card className="p-4 sm:p-6 w-full">
+            <h3 className="font-bold mb-4 text-lg">
               Horas disponibles {selected && `· ${selected.name}`}
             </h3>
             {loadingSlots ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
             ) : !avail?.slots.length ? (
               <p className="text-sm text-muted-foreground">
-                No hay huecos ese día. (El jefe quizá no ha configurado el horario aún.)
+                No hay huecos ese día.
               </p>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-80 overflow-y-auto">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
                 {avail.slots.map((iso) => {
                   const d = new Date(iso);
                   const label = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -485,7 +546,7 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
                       variant="outline"
                       disabled={submitting}
                       onClick={() => onBook(iso)}
-                      className="border-primary/30 hover:bg-primary/10 hover:border-primary"
+                      className="h-12 border-primary/30 hover:bg-primary/10 hover:border-primary"
                     >
                       {label}
                     </Button>

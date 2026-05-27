@@ -15,6 +15,10 @@ import {
   adminDeleteService,
   adminListBusinessHours,
   adminSetBusinessHours,
+  adminMoveAppointment,
+  adminListClientCards,
+  adminUpsertClientCard,
+  adminDeleteClientCard,
 } from "@/lib/admin.functions";
 import { listServices } from "@/lib/booking.functions";
 import { Button } from "@/components/ui/button";
@@ -37,6 +41,10 @@ import {
   ChevronRight,
   Euro,
   CalendarDays,
+  Mail,
+  Phone,
+  Search,
+  User as UserIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -44,7 +52,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -299,13 +318,15 @@ function ServicesTab() {
     duration_minutes: number;
     price_cents: number;
     sort_order: number;
+    color: string;
   };
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  function draft(s: { id: string; slug: string; name: string; duration_minutes: number; price_cents: number; sort_order: number }): Draft {
-    return drafts[s.id] ?? { ...s };
+  function draft(s: { id: string; slug: string; name: string; duration_minutes: number; price_cents: number; sort_order: number; color?: string | null }): Draft {
+    return drafts[s.id] ?? { ...s, color: s.color ?? "#a855f7" };
   }
   function patch(id: string, p: Partial<Draft>) {
-    const base = drafts[id] ?? services?.find((s) => s.id === id);
+    const found = services?.find((s) => s.id === id);
+    const base = drafts[id] ?? (found ? { ...found, color: found.color ?? "#a855f7" } : undefined);
     if (!base) return;
     setDrafts((d) => ({ ...d, [id]: { ...base, ...p } }));
   }
@@ -334,6 +355,7 @@ function ServicesTab() {
         duration_minutes: 30,
         price_cents: 1000,
         sort_order: (services?.length ?? 0) + 1,
+        color: "#a855f7",
       },
     });
     toast.success("Creado");
@@ -376,7 +398,16 @@ function ServicesTab() {
                   onChange={(e) => patch(s.id, { price_cents: Math.round(Number(e.target.value) * 100) })}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <label className="flex flex-col items-center gap-1">
+                  <span className="text-xs text-muted-foreground">Color</span>
+                  <input
+                    type="color"
+                    value={d.color}
+                    onChange={(e) => patch(s.id, { color: e.target.value })}
+                    className="h-9 w-9 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </label>
                 <Button size="sm" disabled={!dirty} onClick={() => save(s.id)}>
                   Guardar
                 </Button>
@@ -456,9 +487,31 @@ function ClientsTab() {
   const qc = useQueryClient();
   const fetchClients = useServerFn(adminListClients);
   const setClient = useServerFn(adminSetClient);
+  const fetchCards = useServerFn(adminListClientCards);
+  const upsertCard = useServerFn(adminUpsertClientCard);
+  const deleteCard = useServerFn(adminDeleteClientCard);
+
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: () => fetchClients(),
+  });
+  const { data: cards } = useQuery({
+    queryKey: ["admin-client-cards"],
+    queryFn: () => fetchCards(),
+  });
+
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<null | { id?: string; name: string; email: string; phone: string; notes: string }>(null);
+  const [confirmDelete, setConfirmDelete] = useState<null | { id: string; name: string }>(null);
+
+  const filteredCards = (cards ?? []).filter((c) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.email ?? "").toLowerCase().includes(q) ||
+      (c.phone ?? "").toLowerCase().includes(q)
+    );
   });
 
   async function toggleBlock(id: string, blocked: boolean) {
@@ -472,8 +525,112 @@ function ClientsTab() {
     qc.invalidateQueries({ queryKey: ["admin-clients"] });
   }
 
+  async function saveCard() {
+    if (!editing || !editing.name.trim()) {
+      toast.error("Nombre obligatorio");
+      return;
+    }
+    await upsertCard({
+      data: {
+        id: editing.id,
+        name: editing.name.trim(),
+        email: editing.email.trim() || null,
+        phone: editing.phone.trim() || null,
+        notes: editing.notes.trim() || null,
+      },
+    });
+    toast.success("Ficha guardada");
+    setEditing(null);
+    qc.invalidateQueries({ queryKey: ["admin-client-cards"] });
+  }
+
+  async function doDeleteCard() {
+    if (!confirmDelete) return;
+    await deleteCard({ data: { id: confirmDelete.id } });
+    toast.success("Cliente eliminado");
+    setConfirmDelete(null);
+    qc.invalidateQueries({ queryKey: ["admin-client-cards"] });
+  }
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-8">
+      {/* Fichas de cliente del jefe */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-xl font-black">Fichas de cliente</h3>
+          <Button
+            size="sm"
+            onClick={() => setEditing({ name: "", email: "", phone: "", notes: "" })}
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
+          >
+            <Plus className="size-4 mr-1" /> Nueva ficha
+          </Button>
+        </div>
+        <div className="relative">
+          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nombre, correo o WhatsApp…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {!filteredCards.length ? (
+          <Card className="p-6 text-muted-foreground">Sin fichas todavía.</Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {filteredCards.map((c) => (
+              <Card key={c.id} className="p-4 flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="font-bold flex items-center gap-2">
+                    <UserIcon className="size-4 text-primary" />
+                    {c.name}
+                  </div>
+                  {c.email && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Mail className="size-3" /> {c.email}
+                    </div>
+                  )}
+                  {c.phone && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Phone className="size-3" /> {c.phone}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setEditing({
+                        id: c.id,
+                        name: c.name,
+                        email: c.email ?? "",
+                        phone: c.phone ?? "",
+                        notes: c.notes ?? "",
+                      })
+                    }
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive/80 border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
+                  >
+                    <Trash2 className="size-3 mr-1" /> Eliminar
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Usuarios registrados */}
+      <div className="space-y-2">
+        <h3 className="text-xl font-black">Usuarios registrados</h3>
       {!clients?.length && <Card className="p-6 text-muted-foreground">Sin clientes todavía.</Card>}
       {(clients ?? []).map((c) => (
         <Card key={c.id} className="p-4 flex items-center justify-between gap-3">
@@ -500,6 +657,59 @@ function ClientsTab() {
           </div>
         </Card>
       ))}
+      </div>
+
+      {/* Diálogo editar ficha */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing?.id ? "Editar ficha" : "Nueva ficha"}</DialogTitle>
+            <DialogDescription>Guarda los datos del cliente para reservas futuras.</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-3">
+              <div>
+                <Label>Nombre</Label>
+                <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} maxLength={120} />
+              </div>
+              <div>
+                <Label>Correo</Label>
+                <Input type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} maxLength={160} />
+              </div>
+              <div>
+                <Label>WhatsApp / Teléfono</Label>
+                <Input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} maxLength={40} />
+              </div>
+              <div>
+                <Label>Notas</Label>
+                <Input value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} maxLength={2000} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
+            <Button onClick={saveCard} className="bg-accent text-accent-foreground hover:bg-accent/90">Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación eliminar */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar a {confirmDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. La ficha del cliente se borrará permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={doDeleteCard} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
