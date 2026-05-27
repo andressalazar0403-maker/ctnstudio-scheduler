@@ -318,13 +318,15 @@ function ServicesTab() {
     duration_minutes: number;
     price_cents: number;
     sort_order: number;
+    color: string;
   };
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  function draft(s: { id: string; slug: string; name: string; duration_minutes: number; price_cents: number; sort_order: number }): Draft {
-    return drafts[s.id] ?? { ...s };
+  function draft(s: { id: string; slug: string; name: string; duration_minutes: number; price_cents: number; sort_order: number; color?: string | null }): Draft {
+    return drafts[s.id] ?? { ...s, color: s.color ?? "#a855f7" };
   }
   function patch(id: string, p: Partial<Draft>) {
-    const base = drafts[id] ?? services?.find((s) => s.id === id);
+    const found = services?.find((s) => s.id === id);
+    const base = drafts[id] ?? (found ? { ...found, color: found.color ?? "#a855f7" } : undefined);
     if (!base) return;
     setDrafts((d) => ({ ...d, [id]: { ...base, ...p } }));
   }
@@ -353,6 +355,7 @@ function ServicesTab() {
         duration_minutes: 30,
         price_cents: 1000,
         sort_order: (services?.length ?? 0) + 1,
+        color: "#a855f7",
       },
     });
     toast.success("Creado");
