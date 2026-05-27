@@ -37,7 +37,7 @@ export const adminListAppointments = createServerFn({ method: "POST" })
     await assertAdmin((context.claims as Record<string, unknown>).email as string);
     const { data: rows, error } = await supabaseAdmin
       .from("appointments")
-      .select("id, start_at, end_at, status, client_name, client_phone, user_id, services(name, slug, duration_minutes, price_cents), profiles(full_name, email)")
+      .select("id, start_at, end_at, status, client_name, client_phone, client_email, client_id, user_id, services(name, slug, duration_minutes, price_cents, color), profiles(full_name, email)")
       .gte("start_at", data.fromIso)
       .lt("start_at", data.toIso)
       .order("start_at", { ascending: true });

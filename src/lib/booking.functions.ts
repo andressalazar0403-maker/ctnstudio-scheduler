@@ -14,13 +14,14 @@ type Service = {
   duration_minutes: number;
   price_cents: number;
   sort_order: number;
+  color: string;
 };
 
 /** Lista pública de servicios. */
 export const listServices = createServerFn({ method: "GET" }).handler(async () => {
   const { data, error } = await supabaseAdmin
     .from("services")
-    .select("id, slug, name, duration_minutes, price_cents, sort_order")
+    .select("id, slug, name, duration_minutes, price_cents, sort_order, color")
     .order("sort_order");
   if (error) throw new Error(error.message);
   return (data ?? []) as Service[];
