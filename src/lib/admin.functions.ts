@@ -53,6 +53,8 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
       startAt: z.string().datetime(),
       clientName: z.string().min(1).max(120),
       clientPhone: z.string().min(3).max(40),
+      clientEmail: z.string().email().max(160).optional().nullable(),
+      clientId: z.string().uuid().optional().nullable(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
@@ -71,6 +73,8 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
       end_at: end.toISOString(),
       client_name: data.clientName,
       client_phone: data.clientPhone,
+      client_email: data.clientEmail ?? null,
+      client_id: data.clientId ?? null,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -158,6 +162,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
       duration_minutes: z.number().int().min(5).max(600),
       price_cents: z.number().int().min(0).max(1_000_000),
       sort_order: z.number().int().min(0).max(999),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
@@ -171,6 +176,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
           duration_minutes: data.duration_minutes,
           price_cents: data.price_cents,
           sort_order: data.sort_order,
+          ...(data.color ? { color: data.color } : {}),
         })
         .eq("id", data.id);
       if (error) throw new Error(error.message);
@@ -181,6 +187,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
         duration_minutes: data.duration_minutes,
         price_cents: data.price_cents,
         sort_order: data.sort_order,
+        ...(data.color ? { color: data.color } : {}),
       });
       if (error) throw new Error(error.message);
     }
