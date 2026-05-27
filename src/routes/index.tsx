@@ -515,28 +515,28 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
           </div>
         </Card>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="p-4 flex justify-center">
+        <div className="space-y-6">
+          <Card className="p-4 sm:p-6 w-full">
             <Calendar
               mode="single"
               selected={date}
               onSelect={setDate}
               disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-              className="p-3 pointer-events-auto"
+              className="w-full p-0 pointer-events-auto [&_table]:w-full [&_th]:w-[14.28%] [&_td]:w-[14.28%] [&_button]:w-full [&_button]:h-14 [&_button]:text-base"
             />
           </Card>
-          <Card className="p-4">
-            <h3 className="font-bold mb-3">
+          <Card className="p-4 sm:p-6 w-full">
+            <h3 className="font-bold mb-4 text-lg">
               Horas disponibles {selected && `· ${selected.name}`}
             </h3>
             {loadingSlots ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
             ) : !avail?.slots.length ? (
               <p className="text-sm text-muted-foreground">
-                No hay huecos ese día. (El jefe quizá no ha configurado el horario aún.)
+                No hay huecos ese día.
               </p>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-80 overflow-y-auto">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
                 {avail.slots.map((iso) => {
                   const d = new Date(iso);
                   const label = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -546,7 +546,7 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
                       variant="outline"
                       disabled={submitting}
                       onClick={() => onBook(iso)}
-                      className="border-primary/30 hover:bg-primary/10 hover:border-primary"
+                      className="h-12 border-primary/30 hover:bg-primary/10 hover:border-primary"
                     >
                       {label}
                     </Button>
