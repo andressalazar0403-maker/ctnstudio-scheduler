@@ -46,6 +46,8 @@ import {
   Search,
   User as UserIcon,
   LogOut,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
 import {
   Dialog,
