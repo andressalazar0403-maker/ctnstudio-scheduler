@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -45,6 +45,7 @@ import {
   Phone,
   Search,
   User as UserIcon,
+  LogOut,
 } from "lucide-react";
 import {
   Dialog,
@@ -77,10 +78,16 @@ export const Route = createFileRoute("/admin")({
 
 function AdminPage() {
   const fetchStatus = useServerFn(getMyAdminStatus);
+  const nav = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => fetchStatus(),
   });
+
+  async function logout() {
+    await supabase.auth.signOut();
+    nav({ to: "/login" });
+  }
 
   if (isLoading) return <p className="p-8 text-muted-foreground">Comprobando acceso…</p>;
   if (!data?.isAdmin) {
@@ -105,11 +112,16 @@ function AdminPage() {
           <div className="flex items-center gap-2 text-primary font-black tracking-widest">
             <Sparkles className="size-4" /> CTNSTUDIO · Admin
           </div>
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <ArrowLeft className="size-4" /> Volver
+          <div className="flex items-center gap-2">
+            <Link to="/">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <ArrowLeft className="size-4" /> Volver
+              </Button>
+            </Link>
+            <Button variant="ghost" size="sm" className="gap-2" onClick={logout}>
+              <LogOut className="size-4" /> Salir
             </Button>
-          </Link>
+          </div>
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
