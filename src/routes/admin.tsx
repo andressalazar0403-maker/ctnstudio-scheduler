@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +46,8 @@ import {
   Search,
   User as UserIcon,
   LogOut,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
 import {
   Dialog,
@@ -731,37 +733,90 @@ const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 21;
 const PX_PER_MIN = 1.6; // 96px por hora
 const SLOT_MIN = 30;
+const TOTAL_DAY_PX = (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MIN;
 
 function fmtEuro(cents: number) {
   return `${(cents / 100).toFixed(2)}€`;
 }
 
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function startOfWeek(d: Date) {
+  const x = startOfDay(d);
+  const dow = x.getDay(); // 0 dom .. 6 sab
+  const diff = dow === 0 ? -6 : 1 - dow; // lunes como inicio
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+function startOfMonth(d: Date) {
+  const x = startOfDay(d);
+  x.setDate(1);
+  return x;
+}
+function addDays(d: Date, n: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function addMonths(d: Date, n: number) {
+  const x = new Date(d);
+  x.setMonth(x.getMonth() + n);
+  return x;
+}
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+type View = "day" | "week" | "month";
+type Appt = Awaited<ReturnType<typeof import("@/lib/admin.functions")["adminListAppointments"]>>[number];
+
 function CalendarTab() {
   const qc = useQueryClient();
-  const [day, setDay] = useState<Date>(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  const [view, setView] = useState<View>("day");
+  const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [newSlot, setNewSlot] = useState<Date | null>(null);
+  const [detail, setDetail] = useState<Appt | null>(null);
+
+  // Aguja horaria en vivo
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const fetchList = useServerFn(adminListAppointments);
   const fetchServices = useServerFn(listServices);
-  const fetchClients = useServerFn(adminListClients);
+  const fetchCards = useServerFn(adminListClientCards);
   const createFn = useServerFn(adminCreateAppointment);
   const cancelFn = useServerFn(adminCancelAppointment);
   const noShowFn = useServerFn(adminMarkNoShow);
+  const moveFn = useServerFn(adminMoveAppointment);
 
-  const dayEnd = new Date(day);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  // Rango según vista
+  const range = (() => {
+    if (view === "day") return { from: startOfDay(anchor), to: addDays(startOfDay(anchor), 1) };
+    if (view === "week") {
+      const f = startOfWeek(anchor);
+      return { from: f, to: addDays(f, 7) };
+    }
+    const f = startOfMonth(anchor);
+    return { from: f, to: addMonths(f, 1) };
+  })();
 
   const { data: rows } = useQuery({
-    queryKey: ["admin-cal", day.toISOString()],
+    queryKey: ["admin-cal", view, range.from.toISOString()],
     queryFn: () =>
-      fetchList({ data: { fromIso: day.toISOString(), toIso: dayEnd.toISOString() } }),
+      fetchList({ data: { fromIso: range.from.toISOString(), toIso: range.to.toISOString() } }),
   });
   const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices() });
-  const { data: clients } = useQuery({ queryKey: ["admin-clients"], queryFn: () => fetchClients() });
+  const { data: cards } = useQuery({ queryKey: ["admin-client-cards"], queryFn: () => fetchCards() });
 
   const scheduled = (rows ?? []).filter((a) => a.status === "scheduled");
   const totalCents = scheduled.reduce((acc, a) => {
@@ -769,77 +824,88 @@ function CalendarTab() {
     return acc + (svc?.price_cents ?? 0);
   }, 0);
 
-  function shiftDay(delta: number) {
-    const d = new Date(day);
-    d.setDate(d.getDate() + delta);
-    setDay(d);
+  function shift(delta: number) {
+    if (view === "day") setAnchor(addDays(anchor, delta));
+    else if (view === "week") setAnchor(addDays(anchor, delta * 7));
+    else setAnchor(addMonths(anchor, delta));
   }
-
-  const slots: Date[] = [];
-  for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) {
-    for (let m = 0; m < 60; m += SLOT_MIN) {
-      const d = new Date(day);
-      d.setHours(h, m, 0, 0);
-      slots.push(d);
-    }
+  function gotoToday() {
+    setAnchor(startOfDay(new Date()));
   }
-
-  function topForTime(t: Date) {
-    const mins = (t.getHours() - DAY_START_HOUR) * 60 + t.getMinutes();
-    return mins * PX_PER_MIN;
-  }
-
-  const dayLabel = day.toLocaleDateString("es-ES", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
-  const COLORS = [
-    "from-purple-500/80 to-purple-700/80 border-purple-300/40",
-    "from-orange-500/80 to-orange-700/80 border-orange-300/40",
-    "from-emerald-500/80 to-emerald-700/80 border-emerald-300/40",
-    "from-sky-500/80 to-sky-700/80 border-sky-300/40",
-    "from-pink-500/80 to-pink-700/80 border-pink-300/40",
-  ];
 
   async function doCancel(id: string) {
     await cancelFn({ data: { id } });
     toast.success("Cancelada");
+    setDetail(null);
     qc.invalidateQueries({ queryKey: ["admin-cal"] });
   }
   async function doNoShow(id: string) {
     await noShowFn({ data: { id } });
     toast.success("Falta registrada");
+    setDetail(null);
     qc.invalidateQueries({ queryKey: ["admin-cal"] });
   }
+  async function doMove(id: string, newStart: Date) {
+    try {
+      await moveFn({ data: { id, startAt: newStart.toISOString() } });
+      toast.success("Cita movida");
+      qc.invalidateQueries({ queryKey: ["admin-cal"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  const headerLabel = (() => {
+    if (view === "day")
+      return anchor.toLocaleDateString("es-ES", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    if (view === "week") {
+      const f = startOfWeek(anchor);
+      const l = addDays(f, 6);
+      return `${f.toLocaleDateString("es-ES", { day: "numeric", month: "short" })} – ${l.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}`;
+    }
+    return anchor.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  })();
 
   return (
     <div className="space-y-6">
-      {/* Panel finanzas + navegación */}
+      {/* Header navegación + finanzas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="md:col-span-2 p-5 flex items-center justify-between bg-gradient-to-br from-card to-card/40">
+        <Card className="md:col-span-2 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-br from-card to-card/40">
           <div>
-            <div className="text-xs uppercase tracking-widest text-muted-foreground">Día</div>
-            <div className="text-2xl font-black capitalize">{dayLabel}</div>
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">
+              {view === "day" ? "Día" : view === "week" ? "Semana" : "Mes"}
+            </div>
+            <div className="text-2xl font-black capitalize">{headerLabel}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => shiftDay(-1)}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-md overflow-hidden border border-border">
+              {(["day", "week", "month"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition-colors",
+                    view === v
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-transparent text-muted-foreground hover:bg-muted/40",
+                  )}
+                >
+                  {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => shift(-1)}>
               <ChevronLeft className="size-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const d = new Date();
-                d.setHours(0, 0, 0, 0);
-                setDay(d);
-              }}
-            >
+            <Button variant="outline" size="sm" onClick={gotoToday}>
               <CalendarDays className="size-4 mr-1" /> Hoy
             </Button>
-            <Button variant="outline" size="sm" onClick={() => shiftDay(1)}>
+            <Button variant="outline" size="sm" onClick={() => shift(1)}>
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -847,8 +913,7 @@ function CalendarTab() {
         <Card
           className="p-5 flex items-center justify-between"
           style={{
-            background:
-              "linear-gradient(135deg, rgba(168,85,247,0.18), rgba(255,115,0,0.18))",
+            background: "linear-gradient(135deg, rgba(168,85,247,0.18), rgba(255,115,0,0.18))",
             borderColor: "rgba(168,85,247,0.35)",
           }}
         >
@@ -865,132 +930,55 @@ function CalendarTab() {
         </Card>
       </div>
 
-      {/* Grid del calendario */}
-      <Card className="overflow-hidden">
-        <div className="relative flex">
-          {/* Columna de horas */}
-          <div className="w-20 border-r border-border/60 bg-card/40">
-            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => {
-              const h = DAY_START_HOUR + i;
-              return (
-                <div
-                  key={h}
-                  className="text-xs text-muted-foreground px-3 pt-1 font-bold"
-                  style={{ height: 60 * PX_PER_MIN }}
-                >
-                  {String(h).padStart(2, "0")}:00
-                </div>
-              );
-            })}
-          </div>
+      {/* Vista */}
+      {view === "day" && (
+        <DayGrid
+          day={anchor}
+          appts={scheduled}
+          now={now}
+          onSlot={(d) => setNewSlot(d)}
+          onClickAppt={(a) => setDetail(a)}
+          onDropAppt={(id, d) => doMove(id, d)}
+        />
+      )}
+      {view === "week" && (
+        <WeekGrid
+          weekStart={startOfWeek(anchor)}
+          appts={scheduled}
+          now={now}
+          onSlot={(d) => setNewSlot(d)}
+          onClickAppt={(a) => setDetail(a)}
+          onDropAppt={(id, d) => doMove(id, d)}
+        />
+      )}
+      {view === "month" && (
+        <MonthGrid
+          monthStart={startOfMonth(anchor)}
+          appts={scheduled}
+          onPickDay={(d) => {
+            setAnchor(d);
+            setView("day");
+          }}
+        />
+      )}
 
-          {/* Columna de slots + citas absolutas */}
-          <div className="relative flex-1">
-            {/* Slots clicables */}
-            {slots.map((s) => (
-              <button
-                key={s.toISOString()}
-                onClick={() => setNewSlot(s)}
-                className="absolute left-0 right-0 border-t border-border/30 hover:bg-primary/10 transition-colors group"
-                style={{ top: topForTime(s), height: SLOT_MIN * PX_PER_MIN }}
-              >
-                <span className="absolute right-2 top-1 text-[10px] uppercase tracking-widest text-muted-foreground opacity-0 group-hover:opacity-100">
-                  + Nueva
-                </span>
-              </button>
-            ))}
-
-            {/* Líneas horarias gruesas */}
-            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => (
-              <div
-                key={i}
-                className="absolute left-0 right-0 border-t border-border/60 pointer-events-none"
-                style={{ top: i * 60 * PX_PER_MIN }}
-              />
-            ))}
-
-            {/* Bloques de citas */}
-            {scheduled.map((a, i) => {
-              const start = new Date(a.start_at);
-              const end = new Date(a.end_at);
-              const top = topForTime(start);
-              const height = Math.max(
-                30,
-                ((end.getTime() - start.getTime()) / 60_000) * PX_PER_MIN,
-              );
-              const svc = Array.isArray(a.services) ? a.services[0] : a.services;
-              const p = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
-              const who = a.client_name ?? p?.full_name ?? p?.email ?? "Cliente";
-              const color = COLORS[i % COLORS.length];
-              return (
-                <div
-                  key={a.id}
-                  className={cn(
-                    "absolute left-2 right-2 rounded-xl border bg-gradient-to-br p-3 text-white shadow-lg backdrop-blur-sm overflow-hidden group/appt",
-                    color,
-                  )}
-                  style={{ top: top + 1, height: height - 2 }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold opacity-90">
-                        {start.toLocaleTimeString("es-ES", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}{" "}
-                        ·{" "}
-                        {Math.round((end.getTime() - start.getTime()) / 60_000)} min
-                      </div>
-                      <div className="text-sm font-black truncate">{svc?.name ?? "Servicio"}</div>
-                      <div className="text-xs truncate opacity-90">{who}</div>
-                      {svc?.price_cents != null && (
-                        <div className="text-xs font-bold opacity-90">{fmtEuro(svc.price_cents)}</div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1 opacity-0 group-hover/appt:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          doNoShow(a.id);
-                        }}
-                        title="Marcar falta"
-                        className="rounded bg-black/30 hover:bg-black/50 p-1"
-                      >
-                        <UserX className="size-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          doCancel(a.id);
-                        }}
-                        title="Cancelar"
-                        className="rounded bg-black/30 hover:bg-black/50 p-1"
-                      >
-                        <XCircle className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Altura total */}
-            <div style={{ height: (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MIN }} />
-          </div>
-        </div>
-      </Card>
-
-      {/* Diálogo: nueva cita manual */}
+      {/* Diálogo: nueva cita */}
       <NewAppointmentDialog
         open={!!newSlot}
         slot={newSlot}
         services={services ?? []}
-        clients={clients ?? []}
+        cards={cards ?? []}
         onClose={() => setNewSlot(null)}
-        onCreate={async ({ serviceId, name, phone, startAt }) => {
+        onCreate={async ({ serviceId, name, phone, email, startAt }) => {
           try {
             await createFn({
-              data: { serviceId, startAt, clientName: name, clientPhone: phone },
+              data: {
+                serviceId,
+                startAt,
+                clientName: name,
+                clientPhone: phone,
+                clientEmail: email || null,
+              },
             });
             toast.success("Cita creada");
             setNewSlot(null);
@@ -1000,47 +988,529 @@ function CalendarTab() {
           }
         }}
       />
+
+      {/* Modal de detalle */}
+      <ApptDetailDialog
+        appt={detail}
+        onClose={() => setDetail(null)}
+        onCancel={doCancel}
+        onNoShow={doNoShow}
+      />
     </div>
   );
 }
+
+/* ---------- Día ---------- */
+function topForTime(t: Date) {
+  const mins = (t.getHours() - DAY_START_HOUR) * 60 + t.getMinutes();
+  return mins * PX_PER_MIN;
+}
+
+function buildSlots(day: Date): Date[] {
+  const slots: Date[] = [];
+  for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) {
+    for (let m = 0; m < 60; m += SLOT_MIN) {
+      const d = new Date(day);
+      d.setHours(h, m, 0, 0);
+      slots.push(d);
+    }
+  }
+  return slots;
+}
+
+const COLOR_FALLBACK = [
+  "from-purple-500/80 to-purple-700/80 border-purple-300/40",
+  "from-orange-500/80 to-orange-700/80 border-orange-300/40",
+  "from-emerald-500/80 to-emerald-700/80 border-emerald-300/40",
+  "from-sky-500/80 to-sky-700/80 border-sky-300/40",
+  "from-pink-500/80 to-pink-700/80 border-pink-300/40",
+];
+
+function NowNeedle({ now, day }: { now: Date; day: Date }) {
+  if (!sameDay(now, day)) return null;
+  const h = now.getHours();
+  if (h < DAY_START_HOUR || h >= DAY_END_HOUR) return null;
+  const top = topForTime(now);
+  return (
+    <div
+      className="absolute left-0 right-0 z-20 pointer-events-none"
+      style={{ top }}
+    >
+      <div className="relative h-px" style={{ background: "#ff3366", boxShadow: "0 0 8px #ff3366" }}>
+        <span
+          className="absolute -top-2 -left-1 size-3 rounded-full"
+          style={{ background: "#ff3366", boxShadow: "0 0 6px #ff3366" }}
+        />
+        <span
+          className="absolute -top-2.5 right-2 text-[10px] font-black px-1.5 py-0.5 rounded"
+          style={{ background: "#ff3366", color: "#fff" }}
+        >
+          {now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ApptBlock({
+  a,
+  i,
+  onClick,
+}: {
+  a: Appt;
+  i: number;
+  onClick: () => void;
+}) {
+  const start = new Date(a.start_at);
+  const end = new Date(a.end_at);
+  const top = topForTime(start);
+  const height = Math.max(30, ((end.getTime() - start.getTime()) / 60_000) * PX_PER_MIN);
+  const svc = Array.isArray(a.services) ? a.services[0] : a.services;
+  const p = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
+  const who = a.client_name ?? p?.full_name ?? p?.email ?? "Cliente";
+  const customColor = svc?.color;
+  const gradientClass = customColor ? "" : COLOR_FALLBACK[i % COLOR_FALLBACK.length];
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/appt-id", a.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onClick={onClick}
+      className={cn(
+        "absolute left-1 right-1 rounded-xl border p-2 text-white shadow-lg overflow-hidden cursor-pointer hover:scale-[1.01] transition-transform z-10",
+        customColor ? "" : "bg-gradient-to-br",
+        gradientClass,
+      )}
+      style={{
+        top: top + 1,
+        height: height - 2,
+        ...(customColor
+          ? {
+              background: `linear-gradient(135deg, ${customColor}cc, ${customColor}88)`,
+              borderColor: `${customColor}66`,
+            }
+          : {}),
+      }}
+    >
+      <div className="text-[10px] font-bold opacity-90">
+        {start.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+      </div>
+      <div className="text-xs font-black truncate">{svc?.name ?? "Servicio"}</div>
+      <div className="text-[11px] truncate opacity-90">{who}</div>
+    </div>
+  );
+}
+
+function DayGrid({
+  day,
+  appts,
+  now,
+  onSlot,
+  onClickAppt,
+  onDropAppt,
+}: {
+  day: Date;
+  appts: Appt[];
+  now: Date;
+  onSlot: (d: Date) => void;
+  onClickAppt: (a: Appt) => void;
+  onDropAppt: (id: string, d: Date) => void;
+}) {
+  const slots = buildSlots(day);
+  return (
+    <Card className="overflow-hidden">
+      <div className="relative flex">
+        <div className="w-20 border-r border-border/60 bg-card/40 shrink-0">
+          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => {
+            const h = DAY_START_HOUR + i;
+            return (
+              <div
+                key={h}
+                className="text-xs text-muted-foreground px-3 pt-1 font-bold"
+                style={{ height: 60 * PX_PER_MIN }}
+              >
+                {String(h).padStart(2, "0")}:00
+              </div>
+            );
+          })}
+        </div>
+        <div className="relative flex-1">
+          {slots.map((s) => (
+            <button
+              key={s.toISOString()}
+              onClick={() => onSlot(s)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/appt-id");
+                if (id) onDropAppt(id, s);
+              }}
+              className="absolute left-0 right-0 border-t border-border/30 hover:bg-primary/10 transition-colors group"
+              style={{ top: topForTime(s), height: SLOT_MIN * PX_PER_MIN }}
+            >
+              <span className="absolute right-2 top-1 text-[10px] uppercase tracking-widest text-muted-foreground opacity-0 group-hover:opacity-100">
+                + Nueva
+              </span>
+            </button>
+          ))}
+          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => (
+            <div
+              key={i}
+              className="absolute left-0 right-0 border-t border-border/60 pointer-events-none"
+              style={{ top: i * 60 * PX_PER_MIN }}
+            />
+          ))}
+          {appts.map((a, i) => (
+            <ApptBlock key={a.id} a={a} i={i} onClick={() => onClickAppt(a)} />
+          ))}
+          <NowNeedle now={now} day={day} />
+          <div style={{ height: TOTAL_DAY_PX }} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Semana ---------- */
+function WeekGrid({
+  weekStart,
+  appts,
+  now,
+  onSlot,
+  onClickAppt,
+  onDropAppt,
+}: {
+  weekStart: Date;
+  appts: Appt[];
+  now: Date;
+  onSlot: (d: Date) => void;
+  onClickAppt: (a: Appt) => void;
+  onDropAppt: (id: string, d: Date) => void;
+}) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex">
+        <div className="w-14 shrink-0 border-r border-border/60 bg-card/40">
+          <div className="h-10 border-b border-border/60" />
+          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => {
+            const h = DAY_START_HOUR + i;
+            return (
+              <div
+                key={h}
+                className="text-[10px] text-muted-foreground px-2 pt-1 font-bold"
+                style={{ height: 60 * PX_PER_MIN }}
+              >
+                {String(h).padStart(2, "0")}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex-1 grid grid-cols-7">
+          {days.map((d) => {
+            const dayAppts = appts.filter((a) => sameDay(new Date(a.start_at), d));
+            const isToday = sameDay(d, now);
+            return (
+              <div key={d.toISOString()} className="relative border-r border-border/60 last:border-r-0">
+                <div
+                  className={cn(
+                    "h-10 border-b border-border/60 px-2 py-1 text-center",
+                    isToday && "bg-primary/15",
+                  )}
+                >
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {d.toLocaleDateString("es-ES", { weekday: "short" })}
+                  </div>
+                  <div className={cn("text-sm font-black leading-none", isToday && "text-primary")}>
+                    {d.getDate()}
+                  </div>
+                </div>
+                <div className="relative" style={{ height: TOTAL_DAY_PX }}>
+                  {buildSlots(d).map((s) => (
+                    <button
+                      key={s.toISOString()}
+                      onClick={() => onSlot(s)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const id = e.dataTransfer.getData("text/appt-id");
+                        if (id) onDropAppt(id, s);
+                      }}
+                      className="absolute left-0 right-0 border-t border-border/20 hover:bg-primary/10"
+                      style={{ top: topForTime(s), height: SLOT_MIN * PX_PER_MIN }}
+                    />
+                  ))}
+                  {dayAppts.map((a, i) => (
+                    <ApptBlock key={a.id} a={a} i={i} onClick={() => onClickAppt(a)} />
+                  ))}
+                  <NowNeedle now={now} day={d} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Mes ---------- */
+function MonthGrid({
+  monthStart,
+  appts,
+  onPickDay,
+}: {
+  monthStart: Date;
+  appts: Appt[];
+  onPickDay: (d: Date) => void;
+}) {
+  const first = startOfWeek(monthStart);
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(first, i));
+  const today = startOfDay(new Date());
+  const monthIdx = monthStart.getMonth();
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid grid-cols-7 text-center text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/60">
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+          <div key={d} className="py-2 font-bold">
+            {d}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {cells.map((d) => {
+          const dayAppts = appts.filter((a) => sameDay(new Date(a.start_at), d));
+          const isCurMonth = d.getMonth() === monthIdx;
+          const isToday = sameDay(d, today);
+          return (
+            <button
+              key={d.toISOString()}
+              onClick={() => onPickDay(d)}
+              className={cn(
+                "h-24 border-b border-r border-border/40 p-2 text-left transition-colors hover:bg-primary/10",
+                !isCurMonth && "opacity-40",
+                isToday && "bg-primary/10",
+              )}
+            >
+              <div className={cn("text-sm font-black", isToday && "text-primary")}>
+                {d.getDate()}
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {dayAppts.slice(0, 3).map((a) => {
+                  const svc = Array.isArray(a.services) ? a.services[0] : a.services;
+                  return (
+                    <div
+                      key={a.id}
+                      className="text-[10px] truncate px-1 rounded text-white"
+                      style={{ background: svc?.color ?? "#a855f7" }}
+                    >
+                      {new Date(a.start_at).toLocaleTimeString("es-ES", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      {svc?.name ?? ""}
+                    </div>
+                  );
+                })}
+                {dayAppts.length > 3 && (
+                  <div className="text-[10px] text-muted-foreground">+{dayAppts.length - 3} más</div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Modal detalle de cita ---------- */
+function ApptDetailDialog({
+  appt,
+  onClose,
+  onCancel,
+  onNoShow,
+}: {
+  appt: Appt | null;
+  onClose: () => void;
+  onCancel: (id: string) => Promise<void>;
+  onNoShow: (id: string) => Promise<void>;
+}) {
+  if (!appt) {
+    return (
+      <Dialog open={false} onOpenChange={() => onClose()}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+  const svc = Array.isArray(appt.services) ? appt.services[0] : appt.services;
+  const p = Array.isArray(appt.profiles) ? appt.profiles[0] : appt.profiles;
+  const name = appt.client_name ?? p?.full_name ?? "Cliente";
+  const email = appt.client_email ?? p?.email ?? "";
+  const phone = appt.client_phone ?? "";
+  const start = new Date(appt.start_at);
+  const end = new Date(appt.end_at);
+  const waNumber = phone.replace(/[^\d+]/g, "").replace(/^\+/, "");
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span
+              className="size-3 rounded-full"
+              style={{ background: svc?.color ?? "#a855f7" }}
+            />
+            {svc?.name ?? "Servicio"}
+          </DialogTitle>
+          <DialogDescription>
+            {start.toLocaleString("es-ES", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            – {end.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+            {svc?.price_cents != null && <> · {fmtEuro(svc.price_cents)}</>}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <UserIcon className="size-4 text-primary" />
+            <span className="font-bold">{name}</span>
+          </div>
+          {phone && (
+            <div className="flex items-center gap-2 text-sm">
+              <Phone className="size-4 text-muted-foreground" />
+              <a href={`tel:${phone}`} className="hover:text-primary">
+                {phone}
+              </a>
+            </div>
+          )}
+          {email && (
+            <div className="flex items-center gap-2 text-sm">
+              <Mail className="size-4 text-muted-foreground" />
+              <a href={`mailto:${email}`} className="hover:text-primary truncate">
+                {email}
+              </a>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="size-3" /> Estado: {appt.status}
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {waNumber && (
+            <a
+              href={`https://wa.me/${waNumber}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"
+            >
+              <MessageSquare className="size-4" /> WhatsApp
+            </a>
+          )}
+          {appt.status === "scheduled" && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onNoShow(appt.id)}>
+                <UserX className="size-4 mr-1" /> Falta
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive/40 text-destructive"
+                onClick={() => onCancel(appt.id)}
+              >
+                <XCircle className="size-4 mr-1" /> Cancelar
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cerrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- Nueva cita con autocomplete ---------- */
+type CardOption = { id: string; name: string; email: string | null; phone: string | null };
 
 function NewAppointmentDialog({
   open,
   slot,
   services,
-  clients,
+  cards,
   onClose,
   onCreate,
 }: {
   open: boolean;
   slot: Date | null;
   services: { id: string; name: string; duration_minutes: number; price_cents: number }[];
-  clients: { id: string; full_name: string | null; email: string | null }[];
+  cards: CardOption[];
   onClose: () => void;
-  onCreate: (v: { serviceId: string; name: string; phone: string; startAt: string }) => Promise<void>;
+  onCreate: (v: {
+    serviceId: string;
+    name: string;
+    phone: string;
+    email: string;
+    startAt: string;
+  }) => Promise<void>;
 }) {
   const [serviceId, setServiceId] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [openSuggest, setOpenSuggest] = useState(false);
 
-  function pickClient(id: string) {
-    if (!id) return;
-    const c = clients.find((x) => x.id === id);
-    if (c) setName(c.full_name ?? c.email ?? "");
+  useEffect(() => {
+    if (!open) {
+      setServiceId("");
+      setName("");
+      setPhone("");
+      setEmail("");
+      setOpenSuggest(false);
+    }
+  }, [open]);
+
+  const matches = (() => {
+    const q = name.trim().toLowerCase();
+    if (!q) return [];
+    return cards
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.email ?? "").toLowerCase().includes(q) ||
+          (c.phone ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 6);
+  })();
+
+  function pick(c: CardOption) {
+    setName(c.name);
+    setPhone(c.phone ?? "");
+    setEmail(c.email ?? "");
+    setOpenSuggest(false);
   }
 
   async function submit() {
     if (!slot || !serviceId || !name || !phone) {
-      toast.error("Completa servicio, cliente y teléfono");
+      toast.error("Completa servicio, nombre y teléfono");
       return;
     }
     setSubmitting(true);
     try {
-      await onCreate({ serviceId, name, phone, startAt: slot.toISOString() });
-      setServiceId("");
-      setName("");
-      setPhone("");
+      await onCreate({ serviceId, name, phone, email, startAt: slot.toISOString() });
     } finally {
       setSubmitting(false);
     }
@@ -1060,6 +1530,9 @@ function NewAppointmentDialog({
               minute: "2-digit",
             })}
           </DialogTitle>
+          <DialogDescription>
+            Empieza a escribir el nombre y elige un cliente existente para autocompletar.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
@@ -1077,27 +1550,54 @@ function NewAppointmentDialog({
               ))}
             </select>
           </div>
-          <div>
-            <Label>Cliente existente (opcional)</Label>
-            <select
-              onChange={(e) => pickClient(e.target.value)}
-              className="w-full mt-1 p-2 rounded-md bg-input border border-border"
-            >
-              <option value="">— Cliente nuevo —</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.full_name ?? c.email}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
+          <div className="relative">
             <Label>Nombre</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
+            <Input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setOpenSuggest(true);
+              }}
+              onFocus={() => setOpenSuggest(true)}
+              onBlur={() => setTimeout(() => setOpenSuggest(false), 150)}
+              maxLength={120}
+              placeholder="Escribe para buscar…"
+            />
+            {openSuggest && matches.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-xl overflow-hidden">
+                {matches.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pick(c)}
+                    className="w-full text-left px-3 py-2 hover:bg-primary/10 border-b border-border/40 last:border-b-0"
+                  >
+                    <div className="text-sm font-bold flex items-center gap-2">
+                      <UserIcon className="size-3 text-primary" /> {c.name}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {[c.phone, c.email].filter(Boolean).join(" · ")}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <Label>Teléfono</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Teléfono / WhatsApp</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} />
+            </div>
+            <div>
+              <Label>Correo (opcional)</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                maxLength={160}
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
