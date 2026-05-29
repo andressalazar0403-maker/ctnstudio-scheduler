@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { getRequest } from "@tanstack/react-start/server";
+import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -15,10 +17,18 @@ async function assertAdmin(email: string | undefined | null) {
 
 /** El usuario actual: ¿es admin? Devuelve simple boolean. */
 export const getMyAdminStatus = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const email = (context.claims as Record<string, unknown>).email as string | undefined;
-    if (!email) return { isAdmin: false };
+  .handler(async () => {
+    const request = getRequest();
+    const authHeader = request?.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) return { isAdmin: false };
+    const token = authHeader.slice(7);
+    if (!token) return { isAdmin: false };
+    const client = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await client.auth.getClaims(token);
+    const email = (data?.claims as Record<string, unknown> | undefined)?.email as string | undefined;
+    if (error || !email) return { isAdmin: false };
     const { data } = await supabaseAdmin
       .from("admin_emails")
       .select("email")
