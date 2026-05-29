@@ -791,6 +791,38 @@ function CalendarTab() {
     return () => clearInterval(t);
   }, []);
 
+  // Realtime: nuevas citas mientras el panel está abierto
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-appts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "appointments" },
+        () => {
+          toast.success("Nueva cita recibida");
+          qc.invalidateQueries({ queryKey: ["admin-cal"] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
+
+  // Atajos de teclado: ←/→ navegan, Hoy con T
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "ArrowLeft") shift(-1);
+      else if (e.key === "ArrowRight") shift(1);
+      else if (e.key === "t" || e.key === "T") gotoToday();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, anchor]);
+
   const fetchList = useServerFn(adminListAppointments);
   const fetchServices = useServerFn(listServices);
   const fetchCards = useServerFn(adminListClientCards);
