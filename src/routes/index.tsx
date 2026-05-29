@@ -432,6 +432,19 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
       toast.success("¡Cita reservada!");
       qc.invalidateQueries({ queryKey: ["availability"] });
       qc.invalidateQueries({ queryKey: ["my-appointments"] });
+      const d = new Date(iso);
+      const fecha = d.toLocaleString("es-ES", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      window.open(
+        waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
+        "_blank",
+        "noopener,noreferrer",
+      );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "No se pudo reservar");
     } finally {
