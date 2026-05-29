@@ -642,16 +642,36 @@ function MisCitasSection({ blocked }: { blocked: boolean }) {
                       })}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!canCancel}
-                    title={canCancel ? "Cancelar" : "Solo con +2h de antelación"}
-                    onClick={() => onCancel(a.id)}
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  >
-                    <XCircle className="size-4 mr-1" /> Cancelar
-                  </Button>
+                  <div className="flex gap-2">
+                    <a
+                      href={waLink(
+                        `Hola, confirmo mi cita de ${svc?.name ?? "barbería"} el ${d.toLocaleString(
+                          "es-ES",
+                          { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" },
+                        )}.`,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-primary/40 text-primary hover:bg-primary/10"
+                      >
+                        <MessageCircle className="size-4 mr-1" /> Confirmar
+                      </Button>
+                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canCancel}
+                      title={canCancel ? "Cancelar" : "Solo con +2h de antelación"}
+                      onClick={() => onCancel(a.id)}
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    >
+                      <XCircle className="size-4 mr-1" /> Cancelar
+                    </Button>
+                  </div>
                 </Card>
               );
             })}
