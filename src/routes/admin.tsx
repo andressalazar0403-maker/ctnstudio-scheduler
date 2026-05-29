@@ -448,11 +448,11 @@ function ServicesTab() {
 }
 
 /* ---------- Horario ---------- */
-function HoursTab() {
+function HoursTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchHours = useServerFn(adminListBusinessHours);
   const setHours = useServerFn(adminSetBusinessHours);
-  const { data: hours } = useQuery({ queryKey: ["admin-hours"], queryFn: () => fetchHours(), retry: false });
+  const { data: hours } = useQuery({ queryKey: ["admin-hours"], queryFn: () => fetchHours(), enabled: queriesEnabled, retry: false });
 
   const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -507,7 +507,7 @@ function HoursTab() {
 }
 
 /* ---------- Clientes ---------- */
-function ClientsTab() {
+function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchClients = useServerFn(adminListClients);
   const setClient = useServerFn(adminSetClient);
@@ -518,11 +518,13 @@ function ClientsTab() {
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: () => fetchClients(),
+    enabled: queriesEnabled,
     retry: false,
   });
   const { data: cards } = useQuery({
     queryKey: ["admin-client-cards"],
     queryFn: () => fetchCards(),
+    enabled: queriesEnabled,
     retry: false,
   });
 
@@ -789,7 +791,7 @@ function sameDay(a: Date, b: Date) {
 type View = "day" | "week" | "month";
 type Appt = Awaited<ReturnType<typeof import("@/lib/admin.functions")["adminListAppointments"]>>[number];
 
-function CalendarTab() {
+function CalendarTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("day");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
@@ -858,10 +860,11 @@ function CalendarTab() {
     queryKey: ["admin-cal", view, range.from.toISOString()],
     queryFn: () =>
       fetchList({ data: { fromIso: range.from.toISOString(), toIso: range.to.toISOString() } }),
+    enabled: queriesEnabled,
     retry: false,
   });
   const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices(), retry: false });
-  const { data: cards } = useQuery({ queryKey: ["admin-client-cards"], queryFn: () => fetchCards(), retry: false });
+  const { data: cards } = useQuery({ queryKey: ["admin-client-cards"], queryFn: () => fetchCards(), enabled: queriesEnabled, retry: false });
 
   const scheduled = (rows ?? []).filter((a) => a.status === "scheduled");
   const totalCents = scheduled.reduce((acc, a) => {
