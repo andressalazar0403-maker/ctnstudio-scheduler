@@ -580,12 +580,15 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
 /* ---------- Sección 3: Mis citas ---------- */
 function MisCitasSection({ blocked }: { blocked: boolean }) {
   const qc = useQueryClient();
+  const { user, loading } = useAuth();
   const fetchList = useServerFn(listMyAppointments);
   const cancelFn = useServerFn(cancelAppointment);
 
   const { data: appts } = useQuery({
-    queryKey: ["my-appointments"],
+    queryKey: ["my-appointments", user?.id],
     queryFn: () => fetchList(),
+    enabled: !loading && !!user,
+    retry: false,
   });
 
   const now = Date.now();
