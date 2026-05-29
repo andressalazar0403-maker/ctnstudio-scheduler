@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getRequest } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+// requireSupabaseAuth se usa en el resto de funciones de este archivo.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 async function assertAdmin(email: string | undefined | null) {

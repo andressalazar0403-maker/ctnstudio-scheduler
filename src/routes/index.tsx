@@ -14,6 +14,7 @@ import {
   cancelAppointment,
 } from "@/lib/booking.functions";
 import { getMyAdminStatus } from "@/lib/admin.functions";
+import { waLink, telLink } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
@@ -431,6 +432,19 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
       toast.success("¡Cita reservada!");
       qc.invalidateQueries({ queryKey: ["availability"] });
       qc.invalidateQueries({ queryKey: ["my-appointments"] });
+      const d = new Date(iso);
+      const fecha = d.toLocaleString("es-ES", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      window.open(
+        waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
+        "_blank",
+        "noopener,noreferrer",
+      );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "No se pudo reservar");
     } finally {
@@ -502,12 +516,12 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
             Has acumulado 3 faltas. Llama o escribe por WhatsApp para apartar tu turno.
           </p>
           <div className="flex gap-3 justify-center pt-2">
-            <a href="tel:+34000000000">
+            <a href={telLink}>
               <Button className="bg-destructive hover:bg-destructive/90">
                 <Phone className="size-4 mr-2" /> Llamar
               </Button>
             </a>
-            <a href="https://wa.me/34000000000" target="_blank" rel="noreferrer">
+            <a href={waLink("Hola, quiero apartar un turno.")} target="_blank" rel="noreferrer">
               <Button variant="outline" className="border-destructive text-destructive">
                 <MessageCircle className="size-4 mr-2" /> WhatsApp
               </Button>
@@ -628,16 +642,36 @@ function MisCitasSection({ blocked }: { blocked: boolean }) {
                       })}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!canCancel}
-                    title={canCancel ? "Cancelar" : "Solo con +2h de antelación"}
-                    onClick={() => onCancel(a.id)}
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  >
-                    <XCircle className="size-4 mr-1" /> Cancelar
-                  </Button>
+                  <div className="flex gap-2">
+                    <a
+                      href={waLink(
+                        `Hola, confirmo mi cita de ${svc?.name ?? "barbería"} el ${d.toLocaleString(
+                          "es-ES",
+                          { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" },
+                        )}.`,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-primary/40 text-primary hover:bg-primary/10"
+                      >
+                        <MessageCircle className="size-4 mr-1" /> Confirmar
+                      </Button>
+                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canCancel}
+                      title={canCancel ? "Cancelar" : "Solo con +2h de antelación"}
+                      onClick={() => onCancel(a.id)}
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    >
+                      <XCircle className="size-4 mr-1" /> Cancelar
+                    </Button>
+                  </div>
                 </Card>
               );
             })}
