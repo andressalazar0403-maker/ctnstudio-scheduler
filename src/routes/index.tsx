@@ -46,9 +46,10 @@ export const Route = createFileRoute("/")({
 });
 
 function HomePage() {
-  const { user, loading } = useAuth();
+  const { session, user, loading } = useAuth();
   const nav = useNavigate();
   const isAuthed = !!user;
+  const canCallProtectedFns = !loading && !!user && !!session?.access_token;
 
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [framesReady, setFramesReady] = useState(0);
@@ -96,7 +97,7 @@ function HomePage() {
   const { data: adminStatus } = useQuery({
     queryKey: ["admin-status", user?.id],
     queryFn: () => fetchAdmin(),
-    enabled: !loading && isAuthed,
+    enabled: canCallProtectedFns,
     retry: false,
   });
   const isAdmin = !!adminStatus?.isAdmin;
@@ -112,7 +113,7 @@ function HomePage() {
   const { data: profile } = useQuery({
     queryKey: ["my-profile", user?.id],
     queryFn: () => fetchProfile(),
-    enabled: !loading && isAuthed,
+    enabled: canCallProtectedFns,
     retry: false,
   });
   const blocked = !!profile?.blocked;
@@ -145,7 +146,7 @@ function HomePage() {
 
         <div id="inicio" className="pt-[110vh]">
           <ReservarSection isAuthed={isAuthed} blocked={blocked} />
-          {isAuthed && <MisCitasSection blocked={blocked} />}
+          {isAuthed && <MisCitasSection blocked={blocked} queriesEnabled={canCallProtectedFns} />}
         </div>
       </div>
     </div>
@@ -578,16 +579,16 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
 }
 
 /* ---------- Sección 3: Mis citas ---------- */
-function MisCitasSection({ blocked }: { blocked: boolean }) {
+function MisCitasSection({ blocked, queriesEnabled }: { blocked: boolean; queriesEnabled: boolean }) {
   const qc = useQueryClient();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const fetchList = useServerFn(listMyAppointments);
   const cancelFn = useServerFn(cancelAppointment);
 
   const { data: appts } = useQuery({
     queryKey: ["my-appointments", user?.id],
     queryFn: () => fetchList(),
-    enabled: !loading && !!user,
+    enabled: queriesEnabled,
     retry: false,
   });
 
