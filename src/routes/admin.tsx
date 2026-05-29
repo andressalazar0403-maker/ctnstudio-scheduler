@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import {
   getMyAdminStatus,
   adminListAppointments,
@@ -81,9 +82,13 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const fetchStatus = useServerFn(getMyAdminStatus);
   const nav = useNavigate();
+  const { session, user, loading: authLoading } = useAuth();
+  const canCheckAdmin = !authLoading && !!user && !!session?.access_token;
   const { data, isLoading } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => fetchStatus(),
+    enabled: canCheckAdmin,
+    retry: false,
   });
 
   async function logout() {
@@ -91,7 +96,8 @@ function AdminPage() {
     nav({ to: "/login" });
   }
 
-  if (isLoading) return <p className="p-8 text-muted-foreground">Comprobando acceso…</p>;
+  if (authLoading || (canCheckAdmin && isLoading)) return <p className="p-8 text-muted-foreground">Comprobando acceso…</p>;
+  if (!user) return <p className="p-8 text-muted-foreground">Redirigiendo al login…</p>;
   if (!data?.isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -135,11 +141,11 @@ function AdminPage() {
             <TabsTrigger value="horario">Horario</TabsTrigger>
             <TabsTrigger value="clientes">Clientes</TabsTrigger>
           </TabsList>
-          <TabsContent value="calendario"><CalendarTab /></TabsContent>
-          <TabsContent value="agenda"><AgendaTab /></TabsContent>
+          <TabsContent value="calendario"><CalendarTab queriesEnabled={canCheckAdmin} /></TabsContent>
+          <TabsContent value="agenda"><AgendaTab queriesEnabled={canCheckAdmin} /></TabsContent>
           <TabsContent value="servicios"><ServicesTab /></TabsContent>
-          <TabsContent value="horario"><HoursTab /></TabsContent>
-          <TabsContent value="clientes"><ClientsTab /></TabsContent>
+          <TabsContent value="horario"><HoursTab queriesEnabled={canCheckAdmin} /></TabsContent>
+          <TabsContent value="clientes"><ClientsTab queriesEnabled={canCheckAdmin} /></TabsContent>
         </Tabs>
       </main>
     </div>
@@ -147,7 +153,9 @@ function AdminPage() {
 }
 
 /* ---------- Agenda ---------- */
-function AgendaTab() {
+type AdminSectionProps = { queriesEnabled: boolean };
+
+function AgendaTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const [range, setRange] = useState<"day" | "week" | "month">("week");
   const fetchList = useServerFn(adminListAppointments);
@@ -165,6 +173,8 @@ function AgendaTab() {
   const { data: rows } = useQuery({
     queryKey: ["admin-appts", range],
     queryFn: () => fetchList({ data: { fromIso: from.toISOString(), toIso: to.toISOString() } }),
+    enabled: queriesEnabled,
+    retry: false,
   });
 
   async function doCancel(id: string) {
@@ -323,7 +333,7 @@ function ServicesTab() {
   const fetchServices = useServerFn(listServices);
   const upsertFn = useServerFn(adminUpsertService);
   const deleteFn = useServerFn(adminDeleteService);
-  const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices() });
+  const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices(), retry: false });
 
   type Draft = {
     id?: string;
@@ -438,11 +448,11 @@ function ServicesTab() {
 }
 
 /* ---------- Horario ---------- */
-function HoursTab() {
+function HoursTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchHours = useServerFn(adminListBusinessHours);
   const setHours = useServerFn(adminSetBusinessHours);
-  const { data: hours } = useQuery({ queryKey: ["admin-hours"], queryFn: () => fetchHours() });
+  const { data: hours } = useQuery({ queryKey: ["admin-hours"], queryFn: () => fetchHours(), enabled: queriesEnabled, retry: false });
 
   const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -497,7 +507,7 @@ function HoursTab() {
 }
 
 /* ---------- Clientes ---------- */
-function ClientsTab() {
+function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchClients = useServerFn(adminListClients);
   const setClient = useServerFn(adminSetClient);
@@ -508,10 +518,14 @@ function ClientsTab() {
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: () => fetchClients(),
+    enabled: queriesEnabled,
+    retry: false,
   });
   const { data: cards } = useQuery({
     queryKey: ["admin-client-cards"],
     queryFn: () => fetchCards(),
+    enabled: queriesEnabled,
+    retry: false,
   });
 
   const [search, setSearch] = useState("");
@@ -777,7 +791,7 @@ function sameDay(a: Date, b: Date) {
 type View = "day" | "week" | "month";
 type Appt = Awaited<ReturnType<typeof import("@/lib/admin.functions")["adminListAppointments"]>>[number];
 
-function CalendarTab() {
+function CalendarTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("day");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
@@ -846,9 +860,11 @@ function CalendarTab() {
     queryKey: ["admin-cal", view, range.from.toISOString()],
     queryFn: () =>
       fetchList({ data: { fromIso: range.from.toISOString(), toIso: range.to.toISOString() } }),
+    enabled: queriesEnabled,
+    retry: false,
   });
-  const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices() });
-  const { data: cards } = useQuery({ queryKey: ["admin-client-cards"], queryFn: () => fetchCards() });
+  const { data: services } = useQuery({ queryKey: ["services"], queryFn: () => fetchServices(), retry: false });
+  const { data: cards } = useQuery({ queryKey: ["admin-client-cards"], queryFn: () => fetchCards(), enabled: queriesEnabled, retry: false });
 
   const scheduled = (rows ?? []).filter((a) => a.status === "scheduled");
   const totalCents = scheduled.reduce((acc, a) => {
