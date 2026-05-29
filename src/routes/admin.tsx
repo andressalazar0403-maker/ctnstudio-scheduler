@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import {
   getMyAdminStatus,
   adminListAppointments,
@@ -81,9 +82,13 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const fetchStatus = useServerFn(getMyAdminStatus);
   const nav = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const canCheckAdmin = !authLoading && !!user;
   const { data, isLoading } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => fetchStatus(),
+    enabled: canCheckAdmin,
+    retry: false,
   });
 
   async function logout() {
@@ -91,7 +96,8 @@ function AdminPage() {
     nav({ to: "/login" });
   }
 
-  if (isLoading) return <p className="p-8 text-muted-foreground">Comprobando acceso…</p>;
+  if (authLoading || (canCheckAdmin && isLoading)) return <p className="p-8 text-muted-foreground">Comprobando acceso…</p>;
+  if (!user) return <p className="p-8 text-muted-foreground">Redirigiendo al login…</p>;
   if (!data?.isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
