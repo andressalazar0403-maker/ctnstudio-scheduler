@@ -26,15 +26,15 @@ export const getMyAdminStatus = createServerFn({ method: "GET" })
     const client = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data, error } = await client.auth.getClaims(token);
-    const email = (data?.claims as Record<string, unknown> | undefined)?.email as string | undefined;
+    const { data: claimsData, error } = await client.auth.getClaims(token);
+    const email = (claimsData?.claims as Record<string, unknown> | undefined)?.email as string | undefined;
     if (error || !email) return { isAdmin: false };
-    const { data } = await supabaseAdmin
+    const { data: row } = await supabaseAdmin
       .from("admin_emails")
       .select("email")
       .ilike("email", email)
       .maybeSingle();
-    return { isAdmin: !!data };
+    return { isAdmin: !!row };
   });
 
 /** Lista citas en un rango (UTC ISO). */
