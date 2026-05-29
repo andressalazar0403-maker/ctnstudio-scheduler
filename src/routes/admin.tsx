@@ -82,8 +82,8 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const fetchStatus = useServerFn(getMyAdminStatus);
   const nav = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const canCheckAdmin = !authLoading && !!user;
+  const { session, user, loading: authLoading } = useAuth();
+  const canCheckAdmin = !authLoading && !!user && !!session?.access_token;
   const { data, isLoading } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => fetchStatus(),
@@ -141,11 +141,11 @@ function AdminPage() {
             <TabsTrigger value="horario">Horario</TabsTrigger>
             <TabsTrigger value="clientes">Clientes</TabsTrigger>
           </TabsList>
-          <TabsContent value="calendario"><CalendarTab /></TabsContent>
-          <TabsContent value="agenda"><AgendaTab /></TabsContent>
+          <TabsContent value="calendario"><CalendarTab queriesEnabled={canCheckAdmin} /></TabsContent>
+          <TabsContent value="agenda"><AgendaTab queriesEnabled={canCheckAdmin} /></TabsContent>
           <TabsContent value="servicios"><ServicesTab /></TabsContent>
-          <TabsContent value="horario"><HoursTab /></TabsContent>
-          <TabsContent value="clientes"><ClientsTab /></TabsContent>
+          <TabsContent value="horario"><HoursTab queriesEnabled={canCheckAdmin} /></TabsContent>
+          <TabsContent value="clientes"><ClientsTab queriesEnabled={canCheckAdmin} /></TabsContent>
         </Tabs>
       </main>
     </div>
@@ -153,7 +153,9 @@ function AdminPage() {
 }
 
 /* ---------- Agenda ---------- */
-function AgendaTab() {
+type AdminSectionProps = { queriesEnabled: boolean };
+
+function AgendaTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const [range, setRange] = useState<"day" | "week" | "month">("week");
   const fetchList = useServerFn(adminListAppointments);
@@ -171,6 +173,7 @@ function AgendaTab() {
   const { data: rows } = useQuery({
     queryKey: ["admin-appts", range],
     queryFn: () => fetchList({ data: { fromIso: from.toISOString(), toIso: to.toISOString() } }),
+    enabled: queriesEnabled,
     retry: false,
   });
 
