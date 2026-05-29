@@ -133,9 +133,13 @@ function AuthSync() {
   const router = useRouter();
   const qc = useQueryClient();
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       router.invalidate();
-      qc.invalidateQueries();
+      if (session?.access_token) {
+        qc.invalidateQueries();
+      } else {
+        qc.clear();
+      }
     });
     return () => subscription.unsubscribe();
   }, [router, qc]);
