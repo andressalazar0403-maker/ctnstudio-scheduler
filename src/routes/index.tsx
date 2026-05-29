@@ -503,12 +503,12 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
             Has acumulado 3 faltas. Llama o escribe por WhatsApp para apartar tu turno.
           </p>
           <div className="flex gap-3 justify-center pt-2">
-            <a href="tel:+34000000000">
+            <a href={telLink}>
               <Button className="bg-destructive hover:bg-destructive/90">
                 <Phone className="size-4 mr-2" /> Llamar
               </Button>
             </a>
-            <a href="https://wa.me/34000000000" target="_blank" rel="noreferrer">
+            <a href={waLink("Hola, quiero apartar un turno.")} target="_blank" rel="noreferrer">
               <Button variant="outline" className="border-destructive text-destructive">
                 <MessageCircle className="size-4 mr-2" /> WhatsApp
               </Button>
