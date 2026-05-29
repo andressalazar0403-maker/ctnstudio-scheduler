@@ -14,6 +14,7 @@ import {
   cancelAppointment,
 } from "@/lib/booking.functions";
 import { getMyAdminStatus } from "@/lib/admin.functions";
+import { waLink, telLink } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
