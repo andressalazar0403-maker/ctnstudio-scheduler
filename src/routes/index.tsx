@@ -96,7 +96,8 @@ function HomePage() {
   const { data: adminStatus } = useQuery({
     queryKey: ["admin-status", user?.id],
     queryFn: () => fetchAdmin(),
-    enabled: isAuthed,
+    enabled: !loading && isAuthed,
+    retry: false,
   });
   const isAdmin = !!adminStatus?.isAdmin;
 
@@ -111,7 +112,8 @@ function HomePage() {
   const { data: profile } = useQuery({
     queryKey: ["my-profile", user?.id],
     queryFn: () => fetchProfile(),
-    enabled: isAuthed,
+    enabled: !loading && isAuthed,
+    retry: false,
   });
   const blocked = !!profile?.blocked;
 
