@@ -1,42 +1,41 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { getRequest } from "@tanstack/react-start/server";
-import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-// requireSupabaseAuth se usa en el resto de funciones de este archivo.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-async function assertAdmin(email: string | undefined | null) {
-  if (!email) throw new Error("No autorizado");
-  const { data } = await supabaseAdmin
+/**
+ * Determina si un userId verificado por el middleware es admin.
+ * Usa el email CONFIRMADO de auth.users (no el del JWT) para evitar
+ * escalada de privilegios por claims manipulados o emails no verificados.
+ */
+async function isAdminUserId(userId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (error || !data?.user) return false;
+  const email = data.user.email;
+  if (!email || !data.user.email_confirmed_at) return false;
+  const { data: row } = await supabaseAdmin
     .from("admin_emails")
     .select("email")
     .ilike("email", email)
     .maybeSingle();
-  if (!data) throw new Error("No autorizado");
+  return !!row;
 }
 
-/** El usuario actual: ¿es admin? Devuelve simple boolean. */
+async function assertAdmin(userId: string): Promise<void> {
+  if (!(await isAdminUserId(userId))) throw new Error("No autorizado");
+}
+
+/** Lanza un error genérico tras loguear el original en el servidor. */
+function failSafe(context: string, error: unknown): never {
+  console.error(`[admin.functions:${context}]`, error);
+  throw new Error("No se pudo completar la operación");
+}
+
+/** El usuario actual: ¿es admin? */
 export const getMyAdminStatus = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const request = getRequest();
-    const authHeader = request?.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) return { isAdmin: false };
-    const token = authHeader.slice(7);
-    if (!token) return { isAdmin: false };
-    const client = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { data: claimsData, error } = await client.auth.getClaims(token);
-    const email = (claimsData?.claims as Record<string, unknown> | undefined)?.email as string | undefined;
-    if (error || !email) return { isAdmin: false };
-    const { data: row } = await supabaseAdmin
-      .from("admin_emails")
-      .select("email")
-      .ilike("email", email)
-      .maybeSingle();
-    return { isAdmin: !!row };
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    return { isAdmin: await isAdminUserId(context.userId) };
   });
 
 /** Lista citas en un rango (UTC ISO). */
@@ -46,14 +45,14 @@ export const adminListAppointments = createServerFn({ method: "POST" })
     z.object({ fromIso: z.string().datetime(), toIso: z.string().datetime() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data: rows, error } = await supabaseAdmin
       .from("appointments")
       .select("id, start_at, end_at, status, client_name, client_phone, client_email, client_id, user_id, services(name, slug, duration_minutes, price_cents, color), profiles(full_name, email)")
       .gte("start_at", data.fromIso)
       .lt("start_at", data.toIso)
       .order("start_at", { ascending: true });
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminListAppointments", error);
     return rows ?? [];
   });
 
@@ -70,7 +69,7 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data: svc } = await supabaseAdmin
       .from("services")
       .select("duration_minutes")
@@ -88,7 +87,7 @@ export const adminCreateAppointment = createServerFn({ method: "POST" })
       client_email: data.clientEmail ?? null,
       client_id: data.clientId ?? null,
     });
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminCreateAppointment", error);
     return { ok: true };
   });
 
@@ -96,12 +95,12 @@ export const adminCancelAppointment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { error } = await supabaseAdmin
       .from("appointments")
       .update({ status: "cancelled" })
       .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminCancelAppointment", error);
     return { ok: true };
   });
 
@@ -109,7 +108,7 @@ export const adminMarkNoShow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data: appt } = await supabaseAdmin
       .from("appointments")
       .select("user_id, status")
@@ -135,12 +134,12 @@ export const adminMarkNoShow = createServerFn({ method: "POST" })
 export const adminListClients = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("profiles")
       .select("id, full_name, email, no_show_count, blocked")
       .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminListClients", error);
     return data ?? [];
   });
 
@@ -154,13 +153,13 @@ export const adminSetClient = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const update: { blocked?: boolean; no_show_count?: number } = {};
     if (typeof data.blocked === "boolean") update.blocked = data.blocked;
     if (typeof data.no_show_count === "number") update.no_show_count = data.no_show_count;
     if (!Object.keys(update).length) return { ok: true };
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", data.userId);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminSetClient", error);
     return { ok: true };
   });
 
@@ -178,7 +177,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     if (data.id) {
       const { error } = await supabaseAdmin
         .from("services")
@@ -191,7 +190,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
           ...(data.color ? { color: data.color } : {}),
         })
         .eq("id", data.id);
-      if (error) throw new Error(error.message);
+      if (error) failSafe("adminUpsertService.update", error);
     } else {
       const { error } = await supabaseAdmin.from("services").insert({
         slug: data.slug,
@@ -201,7 +200,7 @@ export const adminUpsertService = createServerFn({ method: "POST" })
         sort_order: data.sort_order,
         ...(data.color ? { color: data.color } : {}),
       });
-      if (error) throw new Error(error.message);
+      if (error) failSafe("adminUpsertService.insert", error);
     }
     return { ok: true };
   });
@@ -210,21 +209,21 @@ export const adminDeleteService = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { error } = await supabaseAdmin.from("services").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminDeleteService", error);
     return { ok: true };
   });
 
 export const adminListBusinessHours = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("business_hours")
       .select("*")
       .order("day_of_week");
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminListBusinessHours", error);
     return data ?? [];
   });
 
@@ -239,7 +238,7 @@ export const adminSetBusinessHours = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { error } = await supabaseAdmin
       .from("business_hours")
       .update({
@@ -248,7 +247,7 @@ export const adminSetBusinessHours = createServerFn({ method: "POST" })
         closed: data.closed,
       })
       .eq("day_of_week", data.day_of_week);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminSetBusinessHours", error);
     return { ok: true };
   });
 
@@ -257,12 +256,12 @@ export const adminSetBusinessHours = createServerFn({ method: "POST" })
 export const adminListClientCards = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("clients")
       .select("id, name, email, phone, notes, created_at")
       .order("name", { ascending: true });
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminListClientCards", error);
     return data ?? [];
   });
 
@@ -278,7 +277,7 @@ export const adminUpsertClientCard = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const payload = {
       name: data.name,
       email: data.email ?? null,
@@ -287,7 +286,7 @@ export const adminUpsertClientCard = createServerFn({ method: "POST" })
     };
     if (data.id) {
       const { error } = await supabaseAdmin.from("clients").update(payload).eq("id", data.id);
-      if (error) throw new Error(error.message);
+      if (error) failSafe("adminUpsertClientCard.update", error);
       return { id: data.id };
     }
     const { data: row, error } = await supabaseAdmin
@@ -295,7 +294,7 @@ export const adminUpsertClientCard = createServerFn({ method: "POST" })
       .insert(payload)
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminUpsertClientCard.insert", error);
     return { id: row.id };
   });
 
@@ -303,9 +302,9 @@ export const adminDeleteClientCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { error } = await supabaseAdmin.from("clients").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminDeleteClientCard", error);
     return { ok: true };
   });
 
@@ -320,13 +319,16 @@ export const adminMoveAppointment = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin((context.claims as Record<string, unknown>).email as string);
+    await assertAdmin(context.userId);
     const { data: appt, error: e1 } = await supabaseAdmin
       .from("appointments")
       .select("service_id, services(duration_minutes)")
       .eq("id", data.id)
       .single();
-    if (e1 || !appt) throw new Error(e1?.message ?? "Cita no encontrada");
+    if (e1 || !appt) {
+      if (e1) console.error("[admin.functions:adminMoveAppointment.fetch]", e1);
+      throw new Error("Cita no encontrada");
+    }
     const svc = Array.isArray(appt.services) ? appt.services[0] : appt.services;
     const duration = svc?.duration_minutes ?? 30;
     const start = new Date(data.startAt);
@@ -335,6 +337,6 @@ export const adminMoveAppointment = createServerFn({ method: "POST" })
       .from("appointments")
       .update({ start_at: start.toISOString(), end_at: end.toISOString() })
       .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("adminMoveAppointment.update", error);
     return { ok: true };
   });
