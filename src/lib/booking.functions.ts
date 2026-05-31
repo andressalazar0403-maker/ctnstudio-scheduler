@@ -7,6 +7,11 @@ const SLOT_MIN = 15;
 const NO_SHOW_GRACE_MIN = 15;
 const CANCEL_WINDOW_HOURS = 2;
 
+function failSafe(context: string, error: unknown): never {
+  console.error(`[booking.functions:${context}]`, error);
+  throw new Error("No se pudo completar la operación");
+}
+
 type Service = {
   id: string;
   slug: string;
@@ -23,7 +28,7 @@ export const listServices = createServerFn({ method: "GET" }).handler(async () =
     .from("services")
     .select("id, slug, name, duration_minutes, price_cents, sort_order, color")
     .order("sort_order");
-  if (error) throw new Error(error.message);
+  if (error) failSafe("listServices", error);
   return (data ?? []) as Service[];
 });
 
@@ -36,7 +41,7 @@ async function sweepNoShowsFor(userId: string) {
     .eq("user_id", userId)
     .eq("status", "scheduled")
     .lt("end_at", nowIso);
-  if (error) throw new Error(error.message);
+  if (error) failSafe("sweepNoShowsFor", error);
   if (!vencidas?.length) return;
 
   const ids = vencidas.map((v) => v.id);
@@ -64,7 +69,7 @@ export const getMyProfile = createServerFn({ method: "GET" })
       .select("id, full_name, email, avatar_url, no_show_count, blocked")
       .eq("id", context.userId)
       .single();
-    if (error) throw new Error(error.message);
+    if (error) failSafe("getMyProfile", error);
     return data;
   });
 
@@ -169,7 +174,7 @@ export const createAppointment = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) failSafe("createAppointment.insert", error);
     return inserted;
   });
 
@@ -183,7 +188,7 @@ export const listMyAppointments = createServerFn({ method: "GET" })
       .select("id, start_at, end_at, status, services(name, slug, duration_minutes)")
       .eq("user_id", context.userId)
       .order("start_at", { ascending: false });
-    if (error) throw new Error(error.message);
+    if (error) failSafe("listMyAppointments", error);
     return data ?? [];
   });
 
@@ -207,6 +212,6 @@ export const cancelAppointment = createServerFn({ method: "POST" })
       .from("appointments")
       .update({ status: "cancelled" })
       .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) failSafe("cancelAppointment", error);
     return { ok: true };
   });
