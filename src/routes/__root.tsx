@@ -78,11 +78,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "CTNSTUDIO — Barbería" },
       { name: "description", content: "Reserva tu corte en CTNSTUDIO. Rápido, sin esperas." },
-      { property: "og:title", content: "CTNSTUDIO" },
-      { property: "og:description", content: "Barbería de superhéroes. Reserva online." },
+      { property: "og:title", content: "CTNSTUDIO — Barbería" },
+      { property: "og:description", content: "Reserva tu corte en CTNSTUDIO. Rápido, sin esperas." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "CTNSTUDIO — Barbería" },
+      { name: "twitter:description", content: "Reserva tu corte en CTNSTUDIO. Rápido, sin esperas." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0aee516d-abd8-4cdd-98a4-24e91675bcd6/id-preview-5122d237--891a5de7-9e95-4e62-9b2b-0181a1d95c21.lovable.app-1780221409617.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0aee516d-abd8-4cdd-98a4-24e91675bcd6/id-preview-5122d237--891a5de7-9e95-4e62-9b2b-0181a1d95c21.lovable.app-1780221409617.png" },
     ],
     links: [
       {
