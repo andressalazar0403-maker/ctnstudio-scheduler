@@ -697,6 +697,15 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
               {c.blocked ? <Unlock className="size-4 mr-1" /> : <Ban className="size-4 mr-1" />}
               {c.blocked ? "Desbloquear" : "Bloquear"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConfirmDeleteUser({ id: c.id, name: c.full_name ?? c.email ?? "este usuario" })}
+              className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="size-4 mr-1" />
+              Eliminar
+            </Button>
           </div>
         </Card>
       ))}
