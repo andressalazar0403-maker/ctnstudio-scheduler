@@ -12,6 +12,7 @@ import {
   adminMarkNoShow,
   adminListClients,
   adminSetClient,
+  adminDeleteUser,
   adminUpsertService,
   adminDeleteService,
   adminListBusinessHours,
@@ -511,6 +512,7 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchClients = useServerFn(adminListClients);
   const setClient = useServerFn(adminSetClient);
+  const deleteUser = useServerFn(adminDeleteUser);
   const fetchCards = useServerFn(adminListClientCards);
   const upsertCard = useServerFn(adminUpsertClientCard);
   const deleteCard = useServerFn(adminDeleteClientCard);
@@ -531,6 +533,7 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<null | { id?: string; name: string; email: string; phone: string; notes: string }>(null);
   const [confirmDelete, setConfirmDelete] = useState<null | { id: string; name: string }>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<null | { id: string; name: string }>(null);
 
   const filteredCards = (cards ?? []).filter((c) => {
     if (!search.trim()) return true;
@@ -551,6 +554,18 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
     await setClient({ data: { userId: id, no_show_count: 0, blocked: false } });
     toast.success("Contador reseteado");
     qc.invalidateQueries({ queryKey: ["admin-clients"] });
+  }
+
+  async function doDeleteUser() {
+    if (!confirmDeleteUser) return;
+    try {
+      await deleteUser({ data: { userId: confirmDeleteUser.id } });
+      toast.success("Usuario eliminado");
+      setConfirmDeleteUser(null);
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo eliminar");
+    }
   }
 
   async function saveCard() {
@@ -682,6 +697,15 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
               {c.blocked ? <Unlock className="size-4 mr-1" /> : <Ban className="size-4 mr-1" />}
               {c.blocked ? "Desbloquear" : "Bloquear"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConfirmDeleteUser({ id: c.id, name: c.full_name ?? c.email ?? "este usuario" })}
+              className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="size-4 mr-1" />
+              Eliminar
+            </Button>
           </div>
         </Card>
       ))}
@@ -733,6 +757,24 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={doDeleteCard} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmación eliminar usuario registrado */}
+      <AlertDialog open={!!confirmDeleteUser} onOpenChange={(o) => !o && setConfirmDeleteUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar a {confirmDeleteUser?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se borrarán su cuenta, su perfil y todas sus citas. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={doDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
