@@ -512,6 +512,7 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const qc = useQueryClient();
   const fetchClients = useServerFn(adminListClients);
   const setClient = useServerFn(adminSetClient);
+  const deleteUser = useServerFn(adminDeleteUser);
   const fetchCards = useServerFn(adminListClientCards);
   const upsertCard = useServerFn(adminUpsertClientCard);
   const deleteCard = useServerFn(adminDeleteClientCard);
@@ -532,6 +533,7 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<null | { id?: string; name: string; email: string; phone: string; notes: string }>(null);
   const [confirmDelete, setConfirmDelete] = useState<null | { id: string; name: string }>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<null | { id: string; name: string }>(null);
 
   const filteredCards = (cards ?? []).filter((c) => {
     if (!search.trim()) return true;
@@ -552,6 +554,18 @@ function ClientsTab({ queriesEnabled }: AdminSectionProps) {
     await setClient({ data: { userId: id, no_show_count: 0, blocked: false } });
     toast.success("Contador reseteado");
     qc.invalidateQueries({ queryKey: ["admin-clients"] });
+  }
+
+  async function doDeleteUser() {
+    if (!confirmDeleteUser) return;
+    try {
+      await deleteUser({ data: { userId: confirmDeleteUser.id } });
+      toast.success("Usuario eliminado");
+      setConfirmDeleteUser(null);
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo eliminar");
+    }
   }
 
   async function saveCard() {
