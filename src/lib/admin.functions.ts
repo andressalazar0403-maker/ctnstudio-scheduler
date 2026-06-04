@@ -163,6 +163,28 @@ export const adminSetClient = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Elimina un usuario registrado (auth + perfil + citas). */
+export const adminDeleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ userId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    if (data.userId === context.userId) {
+      throw new Error("No puedes eliminarte a ti mismo");
+    }
+    if (await isAdminUserId(data.userId)) {
+      throw new Error("No se puede eliminar a otro administrador");
+    }
+    // Borra citas y perfil primero (por si no hay cascada configurada en auth.users)
+    await supabaseAdmin.from("appointments").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (error) failSafe("adminDeleteUser", error);
+    return { ok: true };
+  });
+
 export const adminUpsertService = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
