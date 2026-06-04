@@ -12,6 +12,7 @@ import {
   adminMarkNoShow,
   adminListClients,
   adminSetClient,
+  adminDeleteUser,
   adminUpsertService,
   adminDeleteService,
   adminListBusinessHours,
