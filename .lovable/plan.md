@@ -1,45 +1,51 @@
-## Estado actual
+# Plan: llevar CTNSTUDIO al 100%
 
-Ya funciona: pre-carga Canvas, login Google premium, panel admin con vistas Día/Semana/Mes, drag & drop, aguja horaria, modal de detalle con WhatsApp/no-show/cancelar, buscador predictivo con autofill, gestión de servicios, horarios, clientes y fichas, inicio/cierre de sesión.
+Implemento de una sola tanda todo lo pendiente del `.lovable/plan.md`, sin tocar lo que ya funciona (auth, reservas, drag & drop, gestión de servicios/horarios/clientes, eliminar usuario, etc.).
 
-## Lo que falta para llegar al 100%
+## 1. WhatsApp para el cliente (en `/`)
+- Tras crear una cita: toast con botón **"Confirmar por WhatsApp"** que abre `wa.me/+34625629249` con un mensaje pre-rellenado (servicio, fecha, hora, nombre).
+- En la lista "Mis citas" del cliente: botón WhatsApp por cita para reenviar la confirmación al jefe.
 
-### 1. Recordatorios automáticos por WhatsApp (cliente)
-- Botón "Confirmar por WhatsApp" en cada cita del cliente en `/` (genera link `wa.me` al barbero con resumen de la cita).
-- Mensaje de bienvenida automático al crear cita (link `wa.me` abierto en pestaña nueva tras reservar).
+## 2. Panel admin — vista Mes interactiva
+- Click en un día → cambia a vista **Día** posicionada en esa fecha.
+- Badge con el número de citas por día (en lugar de solo puntos).
 
-### 2. Vista Mes — interacción completa
-- Hoy: la vista Mes solo muestra puntos. Falta: click en día → salta a vista Día de esa fecha.
-- Contador de citas por día visible (badge con número).
+## 3. Panel admin — UX hardening
+- Skeleton mientras carga la lista de citas (evita parpadeo al cambiar día).
+- Atajos de teclado: `Esc` cierra modales, `←` / `→` navegan días en vista Día.
+- Confirmar que el drag & drop invalida la query (`invalidateQueries`) tras mover una cita.
 
-### 3. Hardening del panel admin
-- Skeleton/spinner mientras carga la lista de citas (evitar parpadeo al cambiar de día).
-- Tecla `Esc` cierra modales; flechas ←/→ navegan días en vista Día.
-- Refrescar query tras drag & drop con `invalidateQueries` (ya hay mutación pero conviene confirmar invalidación).
+## 4. Panel admin — estadísticas del día
+Tarjetas arriba del calendario, derivadas del array ya cargado (sin queries extra):
+- Citas hoy
+- Ingresos del día (suma `price_cents`)
+- No-shows del mes
+- Ocupación % (minutos reservados / minutos disponibles según `business_hours`)
 
-### 4. Estadísticas mínimas en admin
-- Tarjetas arriba del calendario: citas hoy, ingresos del día (suma `price_cents`), no-shows del mes, ocupación %.
+## 5. Notificaciones en tiempo real
+- Migración: `ALTER PUBLICATION supabase_realtime ADD TABLE public.appointments`.
+- En `/admin`: suscripción `supabase.channel("appts").on("postgres_changes", ...)` que invalida la query y muestra un toast **"Nueva cita"** cuando entra un `INSERT`.
 
-### 5. Notificaciones in-app
-- Toast cuando entra una cita nueva mientras el admin tiene el panel abierto (Supabase Realtime sobre `appointments`).
+## 6. SEO / meta
+- Verificar que `/`, `/login` y `/admin` tienen `head()` único con title + description + og:image coherentes.
 
-### 6. QA y limpieza final
-- Quitar import muerto `requireSupabaseAuth` no usado en `admin.functions.ts` (sigue importado tras refactor de `getMyAdminStatus`).
-- Verificar que `getMyAdminStatus` ya no lanza 401 (fix de turno anterior aplicado).
-- Pasar build dev y revisar consola sin errores en `/`, `/login` y `/admin`.
-
-### 7. SEO y meta
-- `head()` único por ruta (`/`, `/login`, `/admin`) con título y description coherentes (Admin ya tiene; faltan og:image en home).
+## 7. Limpieza
+- Quitar imports muertos en `admin.functions.ts` (`requireSupabaseAuth` no usado tras refactor).
+- Revisar consola en `/`, `/login` y `/admin` para confirmar 0 errores.
 
 ## Detalles técnicos
 
-- WhatsApp: número del barbero en variable `BARBER_PHONE` en `src/lib/constants.ts`. Formato `https://wa.me/<phone>?text=<encoded>`.
-- Vista Mes: añadir `onClick` en la celda del día que haga `setView("day"); setCursor(date)`.
-- Realtime: `supabase.channel("appts").on("postgres_changes", { event: "INSERT", schema: "public", table: "appointments" }, () => { qc.invalidateQueries(); toast("Nueva cita") }).subscribe()`.
-- Estadísticas: derivar del array ya cargado por `adminListAppointments` del día/mes — sin queries extra.
+- **WhatsApp**: usar la constante `BARBER_PHONE` ya existente en `src/lib/constants.ts`. Formato: `https://wa.me/34625629249?text=${encodeURIComponent(msg)}`.
+- **Vista Mes**: en la celda del día, `onClick={() => { setView("day"); setCursor(date); }}`. El badge se calcula con un `Map<dateKey, count>` sobre las citas del mes.
+- **Atajos**: `useEffect` global en `/admin` con `window.addEventListener("keydown", ...)`, limpiar en cleanup.
+- **Realtime**: un único `useEffect` en el componente admin que crea el canal y lo cierra en cleanup. Usar `queryClient.invalidateQueries({ queryKey: ["admin-appointments"] })`.
+- **Estadísticas**: calcular con `useMemo` sobre la lista de citas; no añadir endpoints nuevos.
+- **Cuentas admin**: se quedan las 2 actuales (`andressalazar0403@gmail.com`, `eliot0583@gmail.com`). No se tocan.
 
-## Fuera de alcance (lo dejamos así salvo que pidas)
-
+## Fuera de alcance (no se toca)
 - Pagos online.
-- Notificaciones push reales (PWA).
+- Push notifications / PWA.
 - Multi-barbero.
+- WhatsApp Business API automática (sigue siendo link `wa.me` que abre el chat).
+
+Una vez aprobado, lo implemento todo seguido y te aviso para publicar.
