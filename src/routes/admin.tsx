@@ -913,6 +913,7 @@ function CalendarTab({ queriesEnabled }: AdminSectionProps) {
     const svc = Array.isArray(a.services) ? a.services[0] : a.services;
     return acc + (svc?.price_cents ?? 0);
   }, 0);
+  const noShowCount = (rows ?? []).filter((a) => a.status === "no_show").length;
 
   function shift(delta: number) {
     if (view === "day") setAnchor(addDays(anchor, delta));
@@ -1013,7 +1014,10 @@ function CalendarTab({ queriesEnabled }: AdminSectionProps) {
             </div>
             <div className="text-3xl font-black">{fmtEuro(totalCents)}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {scheduled.length} cita{scheduled.length === 1 ? "" : "s"} confirmadas
+              {scheduled.length} cita{scheduled.length === 1 ? "" : "s"} ·{" "}
+              <span className={cn(noShowCount > 0 && "text-destructive font-bold")}>
+                {noShowCount} falta{noShowCount === 1 ? "" : "s"}
+              </span>
             </div>
           </div>
           <Euro className="size-10 text-accent opacity-70" />
