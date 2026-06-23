@@ -1,51 +1,63 @@
-# Plan: llevar CTNSTUDIO al 100%
+# Plan: 100% funcional + páginas legales
 
-Implemento de una sola tanda todo lo pendiente del `.lovable/plan.md`, sin tocar lo que ya funciona (auth, reservas, drag & drop, gestión de servicios/horarios/clientes, eliminar usuario, etc.).
+## 1. Páginas legales nuevas
 
-## 1. WhatsApp para el cliente (en `/`)
-- Tras crear una cita: toast con botón **"Confirmar por WhatsApp"** que abre `wa.me/+34625629249` con un mensaje pre-rellenado (servicio, fecha, hora, nombre).
-- En la lista "Mis citas" del cliente: botón WhatsApp por cita para reenviar la confirmación al jefe.
+Tres rutas públicas en `src/routes/` con el mismo header/footer y diseño del sitio:
 
-## 2. Panel admin — vista Mes interactiva
-- Click en un día → cambia a vista **Día** posicionada en esa fecha.
-- Badge con el número de citas por día (en lugar de solo puntos).
+- **`/terminos`** — Términos y Condiciones
+  - Quién es el responsable (CTN Studio / La Navaja Barbería).
+  - Uso de la app: reserva de citas, política de cancelación (avisar con X horas), no-show.
+  - Cuenta de usuario: login con Google, obligación de datos veraces.
+  - Limitación de responsabilidad y modificaciones del servicio.
+  - Ley aplicable: España.
 
-## 3. Panel admin — UX hardening
-- Skeleton mientras carga la lista de citas (evita parpadeo al cambiar día).
-- Atajos de teclado: `Esc` cierra modales, `←` / `→` navegan días en vista Día.
-- Confirmar que el drag & drop invalida la query (`invalidateQueries`) tras mover una cita.
+- **`/privacidad`** — Política de Privacidad (RGPD)
+  - Responsable del tratamiento + email de contacto.
+  - Datos recogidos: nombre, email, avatar (Google), historial de citas, teléfono si lo añade.
+  - Finalidad: gestionar citas, contactar por WhatsApp, mantener cuenta.
+  - Base legal: ejecución de contrato + consentimiento.
+  - Encargados: Supabase (hosting BBDD UE), Google (auth), WhatsApp (comunicación).
+  - Derechos ARCO-POL (acceso, rectificación, supresión, oposición, portabilidad, limitación) → email del jefe.
+  - Plazo de conservación + cookies (solo técnicas de sesión).
 
-## 4. Panel admin — estadísticas del día
-Tarjetas arriba del calendario, derivadas del array ya cargado (sin queries extra):
-- Citas hoy
-- Ingresos del día (suma `price_cents`)
-- No-shows del mes
-- Ocupación % (minutos reservados / minutos disponibles según `business_hours`)
+- **`/marca`** — Derechos de Marca / Aviso Legal
+  - Titularidad: logo, nombre "La Navaja", contenidos, vídeo e imágenes son propiedad de CTN Studio / La Navaja.
+  - Prohibido el uso sin autorización.
+  - Créditos y contacto.
 
-## 5. Notificaciones en tiempo real
-- Migración: `ALTER PUBLICATION supabase_realtime ADD TABLE public.appointments`.
-- En `/admin`: suscripción `supabase.channel("appts").on("postgres_changes", ...)` que invalida la query y muestra un toast **"Nueva cita"** cuando entra un `INSERT`.
+Enlaces a las 3 páginas en el footer de `index.tsx`. Checkbox "He leído y acepto los términos y la política de privacidad" en el formulario de reserva (bloquea el botón si no se marca) y en el primer login.
 
-## 6. SEO / meta
-- Verificar que `/`, `/login` y `/admin` tienen `head()` único con title + description + og:image coherentes.
+## 2. Seguridad de datos del cliente — auditoría final
 
-## 7. Limpieza
-- Quitar imports muertos en `admin.functions.ts` (`requireSupabaseAuth` no usado tras refactor).
-- Revisar consola en `/`, `/login` y `/admin` para confirmar 0 errores.
+Estado actual (revisado): RLS activo en todas las tablas, scanner sin findings, `is_admin()` con SECURITY DEFINER, admin gestionado por `admin_emails`. Mejoras pendientes:
+
+- **Validación con Zod en `booking.functions.ts`**: nombre (1-100), email opcional (max 255), teléfono (regex E.164 / nacional, max 20), notas (max 500). Rechazar en `inputValidator` antes de tocar BBDD.
+- **Sanitizar el mensaje de WhatsApp**: `encodeURIComponent` en cada campo (nombre, servicio) antes de construir `wa.me/...?text=`. Revisar `index.tsx` y `admin.tsx`.
+- **Quitar logs sensibles**: barrer `console.log` que imprima emails, IDs o payloads de cita en `src/lib/*` y rutas.
+- **Política RLS de `clients`**: confirmar que solo el admin lee la tabla completa y que un cliente solo ve sus propias filas (`auth.uid() = user_id`).
+- **`profiles.email`**: revisar que no esté expuesto a `anon`; solo `authenticated` con `id = auth.uid()` o `is_admin()`.
+- **Rate-limit básico de reservas**: en `createAppointment`, rechazar si el mismo `user_id` creó >5 citas en la última hora (consulta count + throw).
+
+## 3. Funcionalidad — últimos remates
+
+- **Confirmación visible al reservar**: tras `createAppointment`, además del toast de WhatsApp, mostrar `AlertDialog` con resumen (servicio, fecha, hora, precio) y botón "Ver mis citas".
+- **Recordatorio visual**: en "Mis citas", badge "Hoy" / "Mañana" / "En X días" calculado en cliente.
+- **Estado vacío admin**: si no hay citas en el día seleccionado, mostrar ilustración + texto "Sin citas para este día" en lugar de calendario vacío.
+- **Favicon + manifest**: verificar que `__root.tsx` apunta a un favicon real (no el de Vite por defecto).
+- **404 en español**: traducir `notFoundComponent` de `__root.tsx`.
+
+## 4. Lo que NO se toca
+
+- Pagos online, WhatsApp Business API automática, multi-barbero, push notifications nativas, panel de estadísticas mensual/anual avanzado. Quedan fuera del 100% acordado.
 
 ## Detalles técnicos
 
-- **WhatsApp**: usar la constante `BARBER_PHONE` ya existente en `src/lib/constants.ts`. Formato: `https://wa.me/34625629249?text=${encodeURIComponent(msg)}`.
-- **Vista Mes**: en la celda del día, `onClick={() => { setView("day"); setCursor(date); }}`. El badge se calcula con un `Map<dateKey, count>` sobre las citas del mes.
-- **Atajos**: `useEffect` global en `/admin` con `window.addEventListener("keydown", ...)`, limpiar en cleanup.
-- **Realtime**: un único `useEffect` en el componente admin que crea el canal y lo cierra en cleanup. Usar `queryClient.invalidateQueries({ queryKey: ["admin-appointments"] })`.
-- **Estadísticas**: calcular con `useMemo` sobre la lista de citas; no añadir endpoints nuevos.
-- **Cuentas admin**: se quedan las 2 actuales (`andressalazar0403@gmail.com`, `eliot0583@gmail.com`). No se tocan.
+- Páginas legales: archivos `src/routes/terminos.tsx`, `src/routes/privacidad.tsx`, `src/routes/marca.tsx` con `createFileRoute` y `head()` propio (title + meta description únicos por página).
+- Checkbox de aceptación: estado local en el form, no se persiste (basta el acto de marcarlo + timestamp de la cita).
+- Zod schemas vivirán en `src/lib/booking.functions.ts` exportados, reutilizados en el front para validación inmediata.
+- Rate-limit: query `count` sobre `appointments` filtrado por `user_id` y `created_at > now() - interval '1 hour'` dentro del handler con `requireSupabaseAuth`.
+- Footer: componente nuevo `src/components/site-footer.tsx` o sección dentro de `index.tsx` con `<Link to="/terminos">` etc.
 
-## Fuera de alcance (no se toca)
-- Pagos online.
-- Push notifications / PWA.
-- Multi-barbero.
-- WhatsApp Business API automática (sigue siendo link `wa.me` que abre el chat).
+## Cuentas admin (sin cambios)
 
-Una vez aprobado, lo implemento todo seguido y te aviso para publicar.
+Siguen siendo `andressalazar0403@gmail.com` y `eliot0583@gmail.com`.

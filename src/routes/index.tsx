@@ -15,6 +15,7 @@ import {
 } from "@/lib/booking.functions";
 import { getMyAdminStatus } from "@/lib/admin.functions";
 import { waLink, telLink } from "@/lib/constants";
+import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
@@ -147,6 +148,7 @@ function HomePage() {
         <div id="inicio" className="pt-[110vh]">
           <ReservarSection isAuthed={isAuthed} blocked={blocked} />
           {isAuthed && <MisCitasSection blocked={blocked} queriesEnabled={canCallProtectedFns} />}
+          <SiteFooter />
         </div>
       </div>
     </div>
@@ -546,6 +548,11 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
             <h3 className="font-bold mb-4 text-lg">
               Horas disponibles {selected && `· ${selected.name}`}
             </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Al pulsar una hora confirmas tu reserva y aceptas los{" "}
+              <Link to="/terminos" className="underline hover:text-primary">términos</Link> y la{" "}
+              <Link to="/privacidad" className="underline hover:text-primary">política de privacidad</Link>.
+            </p>
             {loadingSlots ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
             ) : !avail?.slots.length ? (

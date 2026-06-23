@@ -143,6 +143,17 @@ export const createAppointment = createServerFn({ method: "POST" })
       .single();
     if (profile?.blocked) throw new Error("Usuario bloqueado. Reserva por teléfono o WhatsApp.");
 
+    // Rate-limit: máx. 5 citas creadas por usuario en la última hora.
+    const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
+    const { count: recentCount } = await supabaseAdmin
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", context.userId)
+      .gte("created_at", hourAgo);
+    if ((recentCount ?? 0) >= 5) {
+      throw new Error("Demasiadas reservas en poco tiempo. Espera unos minutos.");
+    }
+
     const { data: svc } = await supabaseAdmin
       .from("services")
       .select("id, duration_minutes")
