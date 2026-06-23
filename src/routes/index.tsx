@@ -548,6 +548,11 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
             <h3 className="font-bold mb-4 text-lg">
               Horas disponibles {selected && `· ${selected.name}`}
             </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Al pulsar una hora confirmas tu reserva y aceptas los{" "}
+              <Link to="/terminos" className="underline hover:text-primary">términos</Link> y la{" "}
+              <Link to="/privacidad" className="underline hover:text-primary">política de privacidad</Link>.
+            </p>
             {loadingSlots ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
             ) : !avail?.slots.length ? (
