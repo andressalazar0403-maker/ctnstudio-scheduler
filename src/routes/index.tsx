@@ -15,6 +15,7 @@ import {
 } from "@/lib/booking.functions";
 import { getMyAdminStatus } from "@/lib/admin.functions";
 import { waLink, telLink } from "@/lib/constants";
+import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
@@ -147,6 +148,7 @@ function HomePage() {
         <div id="inicio" className="pt-[110vh]">
           <ReservarSection isAuthed={isAuthed} blocked={blocked} />
           {isAuthed && <MisCitasSection blocked={blocked} queriesEnabled={canCallProtectedFns} />}
+          <SiteFooter />
         </div>
       </div>
     </div>
