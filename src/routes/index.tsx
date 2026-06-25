@@ -470,7 +470,6 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
       setSubmitting(false);
     }
   }
-  }
 
   return (
     <section id="reservar" className="px-4 sm:px-6 py-20 max-w-5xl mx-auto space-y-10">
