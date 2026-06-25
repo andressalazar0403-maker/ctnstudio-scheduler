@@ -458,16 +458,18 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
         hour: "2-digit",
         minute: "2-digit",
       });
-      window.open(
-        waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
-        "_blank",
-        "noopener,noreferrer",
-      );
+      setConfirmData({
+        serviceName: selected?.name ?? "una cita",
+        fecha,
+        waUrl: waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
+      });
+      setConfirmOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "No se pudo reservar");
     } finally {
       setSubmitting(false);
     }
+  }
   }
 
   return (
