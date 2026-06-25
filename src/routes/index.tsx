@@ -416,6 +416,12 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
   const [slug, setSlug] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmData, setConfirmData] = useState<{
+    serviceName: string;
+    fecha: string;
+    waUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!slug && services?.length) setSlug(services[0].slug);
