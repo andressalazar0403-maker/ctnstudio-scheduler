@@ -19,6 +19,13 @@ import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { GlowCard } from "@/components/ui/spotlight-card";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -409,6 +416,12 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
   const [slug, setSlug] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmData, setConfirmData] = useState<{
+    serviceName: string;
+    fecha: string;
+    waUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!slug && services?.length) setSlug(services[0].slug);
@@ -445,11 +458,12 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
         hour: "2-digit",
         minute: "2-digit",
       });
-      window.open(
-        waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
-        "_blank",
-        "noopener,noreferrer",
-      );
+      setConfirmData({
+        serviceName: selected?.name ?? "una cita",
+        fecha,
+        waUrl: waLink(`Hola, acabo de reservar ${selected?.name ?? "una cita"} para el ${fecha}. ¡Gracias!`),
+      });
+      setConfirmOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "No se pudo reservar");
     } finally {
@@ -581,6 +595,40 @@ function ReservarSection({ isAuthed, blocked }: { isAuthed: boolean; blocked: bo
           </Card>
         </div>
       )}
+
+      {/* Modal de confirmación post-reserva */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¡Cita reservada!</DialogTitle>
+            <DialogDescription>
+              Tu reserva está guardada. ¿Quieres enviar un mensaje de confirmación por WhatsApp?
+            </DialogDescription>
+          </DialogHeader>
+          {confirmData && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm space-y-1">
+                <div className="font-semibold">{confirmData.serviceName}</div>
+                <div className="text-muted-foreground">{confirmData.fecha}</div>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  className="flex-1 bg-[#25D366] hover:bg-[#128C7E] text-white"
+                  onClick={() => {
+                    window.open(confirmData.waUrl, "_blank", "noopener,noreferrer");
+                    setConfirmOpen(false);
+                  }}
+                >
+                  <MessageCircle className="size-4 mr-2" /> Abrir WhatsApp
+                </Button>
+                <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
